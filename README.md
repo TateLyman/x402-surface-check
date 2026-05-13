@@ -4,6 +4,8 @@ No-payment CLI for checking x402 launch surfaces before a real agent spends.
 
 It accepts an x402 manifest or OpenAPI URL, derives public endpoints, sends no-payment probes, checks browser preflight behavior, and returns a Markdown patch queue. It never sends `X-PAYMENT`, never signs, and never attempts a paid call.
 
+npm: https://www.npmjs.com/package/x402-surface-check
+
 ```bash
 npx --yes x402-surface-check https://api.example.com/.well-known/x402
 npx --yes x402-surface-check https://api.example.com/openapi.json report.md
