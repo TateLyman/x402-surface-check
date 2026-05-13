@@ -4,7 +4,7 @@
   "description": "No-payment x402 public-surface checker for manifests, OpenAPI specs, and HTTP 402 challenges.",
   "type": "module",
   "bin": {
-    "x402-surface-check": "./bin/x402-surface-check.mjs"
+    "x402-surface-check": "bin/x402-surface-check.mjs"
   },
   "files": [
     "bin",
@@ -28,7 +28,7 @@
   "homepage": "https://tateprograms.com/x402-surface-check.html",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TateLyman/x402-surface-check.git"
+    "url": "git+https://github.com/TateLyman/x402-surface-check.git"
   },
   "bugs": {
     "url": "https://github.com/TateLyman/x402-surface-check/issues"
