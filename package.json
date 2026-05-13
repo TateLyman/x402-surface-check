@@ -1,0 +1,41 @@
+{
+  "name": "x402-surface-check",
+  "version": "0.1.0",
+  "description": "No-payment x402 public-surface checker for manifests, OpenAPI specs, and HTTP 402 challenges.",
+  "type": "module",
+  "bin": {
+    "x402-surface-check": "./bin/x402-surface-check.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --check bin/x402-surface-check.mjs && node test/smoke.mjs",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "keywords": [
+    "x402",
+    "agent-payments",
+    "pay-sh",
+    "usdc",
+    "solana",
+    "mcp",
+    "security",
+    "cli"
+  ],
+  "homepage": "https://tateprograms.com/x402-surface-check.html",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TateLyman/x402-surface-check.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TateLyman/x402-surface-check/issues"
+  },
+  "author": "Tate Programs <hello@tateprograms.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}
