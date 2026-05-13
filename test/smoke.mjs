@@ -55,6 +55,21 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/mpp/eth') {
+    const mppRequest = Buffer.from(JSON.stringify({
+      amount: '1000',
+      currency: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      description: 'JSON-RPC for eth chain',
+      methodDetails: { decimals: 6, network: 'mainnet' },
+      recipient: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+    })).toString('base64url')
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('www-authenticate', `Payment method="solana", request="${mppRequest}", expires="2026-05-13T23:58:44Z"`)
+    response.end(JSON.stringify({ error: 'payment_required', payment: { protocol: 'mpp' } }))
+    return
+  }
+
   response.statusCode = 404
   response.end('not found')
 })
@@ -81,6 +96,19 @@ try {
   assert.match(stdout, /getScore/)
   assert.match(stdout, /\$0\.001/)
   assert.match(stdout, /No obvious launch-readiness findings/)
+
+  const mpp = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    `${serverUrl}/mpp/eth`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(mpp.stdout, /direct endpoint/)
+  assert.match(mpp.stdout, /mpp/)
+  assert.match(mpp.stdout, /mainnet/)
+  assert.match(mpp.stdout, /\$0\.001/)
 }
 finally {
   await new Promise(resolve => server.close(resolve))

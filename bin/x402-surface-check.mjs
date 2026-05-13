@@ -13,8 +13,11 @@ function usage() {
 
 Usage:
   x402-surface-check <manifest-or-openapi-url> [output.md]
+  x402-surface-check --endpoint --method POST <paid-endpoint-url> [output.md]
 
 Options:
+  --endpoint       Treat the URL as one paid endpoint instead of a discovery document
+  --method <verb>  HTTP method for direct endpoint mode, default POST
   --origin <url>   Origin to use for browser-style CORS preflight
   --limit <n>      Maximum endpoints to probe, default ${defaultLimit}
   --json           Print JSON instead of Markdown
@@ -26,7 +29,9 @@ Options:
 function parseArgs(argv) {
   const args = {
     json: false,
+    endpoint: false,
     limit: Number(process.env.X402_CHECK_LIMIT ?? defaultLimit),
+    method: 'POST',
     origin: process.env.X402_CHECK_ORIGIN,
     outputPath: '',
     url: '',
@@ -42,6 +47,13 @@ function parseArgs(argv) {
     }
     else if (arg === '--json') {
       args.json = true
+    }
+    else if (arg === '--endpoint') {
+      args.endpoint = true
+    }
+    else if (arg === '--method') {
+      args.method = String(argv[index + 1] ?? '').toUpperCase()
+      index += 1
     }
     else if (arg === '--origin') {
       args.origin = argv[index + 1]
@@ -173,6 +185,42 @@ function parseEncodedChallenge(value) {
   }
 }
 
+function parsePaymentAuthenticate(value) {
+  if (!value || !/^Payment\s+/i.test(value)) return null
+  const params = {}
+  const pattern = /([a-zA-Z][\w-]*)="([^"]*)"/g
+  let match = pattern.exec(value)
+
+  while (match) {
+    params[match[1]] = match[2]
+    match = pattern.exec(value)
+  }
+
+  const request = parseEncodedChallenge(params.request)
+  if (!request) return null
+
+  return {
+    protocol: 'mpp',
+    resource: { url: '' },
+    accepts: [{
+      scheme: 'mpp',
+      network: request.methodDetails?.network ?? params.method ?? '',
+      amount: request.amount ?? '',
+      asset: request.currency ?? '',
+      payTo: request.recipient ?? '',
+      resource: '',
+      maxTimeoutSeconds: '',
+      extra: {
+        description: request.description ?? '',
+        expires: params.expires ?? '',
+        id: params.id ?? '',
+        intent: params.intent ?? '',
+        method: params.method ?? '',
+      },
+    }],
+  }
+}
+
 async function fetchDocument(url) {
   const response = await fetch(url, {
     headers: {
@@ -205,9 +253,17 @@ async function probeEndpoint(entry) {
   const headerChallenge = parseEncodedChallenge(
     response.headers.get('payment-required') ?? response.headers.get('x-payment-required'),
   )
+  const paymentChallenge = parsePaymentAuthenticate(response.headers.get('www-authenticate'))
 
-  if (headerChallenge && !body.json?.accepts?.length) {
-    body.json = headerChallenge
+  if (!body.json?.accepts?.length) {
+    if (headerChallenge) {
+      body.json = headerChallenge
+    }
+    else if (paymentChallenge) {
+      paymentChallenge.resource.url = entry.url
+      paymentChallenge.accepts[0].resource = entry.url
+      body.json = paymentChallenge
+    }
   }
 
   return {
@@ -260,6 +316,7 @@ function challengeSummary(result) {
 
   return {
     status: result.status,
+    protocol: challenge?.protocol ?? (firstAccept.scheme === 'mpp' ? 'mpp' : 'x402'),
     resourceUrl,
     network: firstAccept.network ?? '',
     amount,
@@ -329,7 +386,7 @@ function findingList(documentResult, challengeResults, preflightResults, entries
 
   for (const result of preflightResults) {
     const allowed = result.headers['access-control-allow-headers'] ?? ''
-    if (!/x-payment/i.test(allowed)) {
+    if (allowed !== '*' && !/x-payment/i.test(allowed)) {
       findings.push(`P1 - ${result.name} CORS preflight does not allow X-PAYMENT; observed allow headers: ${allowed || 'none'}.`)
     }
     const allowedMethods = result.headers['access-control-allow-methods'] ?? ''
@@ -353,7 +410,7 @@ function formatMarkdown(report) {
   const document = report.document.body.json ?? {}
   const challengeRows = report.challenges.map(result => {
     const summary = challengeSummary(result)
-    return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${summary.price || '-'} | ${summary.network || '-'} | ${summary.resourceUrl || '-'} |`
+    return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${summary.protocol || '-'} | ${summary.price || '-'} | ${summary.network || '-'} | ${summary.resourceUrl || '-'} |`
   })
   const preflightRows = report.preflights.map(result => {
     return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${result.headers['access-control-allow-origin'] ?? '-'} | ${result.headers['access-control-allow-headers'] ?? '-'} | ${result.headers['access-control-allow-methods'] ?? '-'} |`
@@ -370,7 +427,7 @@ function formatMarkdown(report) {
     '## Document',
     '',
     `- Status: ${report.document.status}`,
-    `- Type: ${document.openapi ? 'OpenAPI' : 'x402 manifest or JSON document'}`,
+    `- Type: ${report.directEndpoint ? 'direct endpoint' : (document.openapi ? 'OpenAPI' : 'x402 manifest or JSON document')}`,
     `- Agent: ${document.agent?.name ?? '-'}`,
     `- Wallet: ${document.agent?.wallet ?? '-'}`,
     `- Facilitator: ${document.facilitator ?? '-'}`,
@@ -380,9 +437,9 @@ function formatMarkdown(report) {
     '',
     '## No-Payment Challenge Map',
     '',
-    '| Endpoint | Method | HTTP | Price | Network | Resource URL |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...(challengeRows.length ? challengeRows : ['| - | - | - | - | - | - |']),
+    '| Endpoint | Method | HTTP | Protocol | Price | Network | Resource URL |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...(challengeRows.length ? challengeRows : ['| - | - | - | - | - | - | - |']),
     '',
     '## Browser Preflight Map',
     '',
@@ -398,8 +455,18 @@ function formatMarkdown(report) {
 }
 
 async function runCheck(options) {
-  const document = await fetchDocument(options.url)
-  const entries = document.body.json ? endpointEntries(document.body.json, document.url, options.limit) : []
+  const document = options.endpoint
+    ? {
+        status: 200,
+        ok: true,
+        headers: {},
+        url: options.url,
+        body: { text: '{}', json: {} },
+      }
+    : await fetchDocument(options.url)
+  const entries = options.endpoint
+    ? [{ name: new URL(options.url).pathname.split('/').filter(Boolean).at(-1) ?? options.url, url: options.url, method: options.method || 'POST' }]
+    : (document.body.json ? endpointEntries(document.body.json, document.url, options.limit) : [])
   const origin = options.origin ?? new URL(document.url).origin
   const challenges = []
   const preflights = []
@@ -412,6 +479,7 @@ async function runCheck(options) {
   const report = {
     checkedAt: new Date().toISOString(),
     document,
+    directEndpoint: options.endpoint,
     entries,
     findings: [],
     origin,
