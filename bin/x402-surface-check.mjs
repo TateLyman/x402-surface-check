@@ -151,6 +151,19 @@ function endpointEntries(document, sourceUrl, limit) {
     }
   }
 
+  if (Array.isArray(document.items)) {
+    for (const item of document.items) {
+      if (item?.type && item.type !== 'http') continue
+      const rawPath = item?.resource ?? item?.url ?? item?.endpoint ?? item?.path
+      if (!rawPath) continue
+      entries.push({
+        name: item.metadata?.name ?? item.id ?? item.name ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
+        url: endpointUrl(rawPath, baseUrl, sourceUrl),
+        method: String(item.method ?? 'GET').toUpperCase(),
+      })
+    }
+  }
+
   if (document.openapi && document.paths && typeof document.paths === 'object') {
     const baseUrl = document.servers?.find(server => typeof server?.url === 'string')?.url
       ?? sourceUrl
@@ -385,7 +398,7 @@ function findingList(documentResult, challengeResults, preflightResults, entries
   }
 
   if (entries.length === 0) {
-    findings.push('P1 - Document does not expose any manifest, OpenAPI, category, or resource endpoints for no-payment probes.')
+    findings.push('P1 - Document does not expose any manifest, OpenAPI, item, category, or resource endpoints for no-payment probes.')
   }
 
   for (const result of challengeResults) {

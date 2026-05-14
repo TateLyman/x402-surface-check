@@ -55,6 +55,25 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/items.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      payment: {
+        network: 'eip155:8453',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        wallet: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+      },
+      items: [{
+        resource: '/api/premium/routing',
+        type: 'http',
+        method: 'GET',
+        metadata: { name: 'Premium routing recommendations' },
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/score/%7Bwallet%7D') {
     response.statusCode = 402
     response.setHeader('content-type', 'application/json')
@@ -89,6 +108,26 @@ const server = createServer((request, response) => {
         asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
         payTo: '0x9C394847074aF408470e607e062C838a3Cce1240',
         resource: `${serverUrl}/api/weather/tokyo`,
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/api/premium/routing') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}/api/premium/routing`,
         maxTimeoutSeconds: 60,
       }],
     }))
@@ -148,6 +187,17 @@ try {
   assert.match(manifest.stdout, /tokyo/)
   assert.match(manifest.stdout, /\$0\.001/)
   assert.match(manifest.stdout, /base-sepolia/)
+
+  const itemsManifest = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/items.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(itemsManifest.stdout, /Premium routing recommendations/)
+  assert.match(itemsManifest.stdout, /\$0\.02/)
+  assert.match(itemsManifest.stdout, /eip155:8453/)
 
   const mpp = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
