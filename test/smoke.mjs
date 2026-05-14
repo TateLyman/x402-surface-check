@@ -22,6 +22,11 @@ const server = createServer((request, response) => {
       info: { title: 'Fixture', version: '1.0.0' },
       servers: [{ url: serverUrl }],
       paths: {
+        '/health': {
+          get: {
+            operationId: 'healthCheck',
+          },
+        },
         '/score/{wallet}': {
           get: {
             operationId: 'getScore',
@@ -99,6 +104,13 @@ const server = createServer((request, response) => {
         metadata: { name: 'Premium routing recommendations' },
       }],
     }))
+    return
+  }
+
+  if (request.url === '/health') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ ok: true }))
     return
   }
 
@@ -309,6 +321,8 @@ try {
   assert.match(stdout, /getScore/)
   assert.match(stdout, /\$0\.001/)
   assert.match(stdout, /No obvious launch-readiness findings/)
+  assert.doesNotMatch(stdout, /healthCheck returned 200 without a payment challenge/)
+  assert.doesNotMatch(stdout, /healthCheck CORS preflight/)
 
   const mismatch = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

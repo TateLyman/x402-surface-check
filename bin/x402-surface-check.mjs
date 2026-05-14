@@ -501,11 +501,21 @@ function looksLikePlaceholderPayTo(payTo) {
   return false
 }
 
+function entryKey(entry) {
+  return `${entry.method ?? 'POST'} ${entry.url}`
+}
+
+function looksLikeOperationalHealthEndpoint(result) {
+  const value = `${result.name ?? ''} ${new URL(result.url).pathname}`.toLowerCase()
+  return /(^|[/_\s-])(health|healthz|ready|readiness|live|liveness|status)([/_\s-]|$)/.test(value)
+}
+
 function findingList(documentResult, challengeResults, preflightResults, entries) {
   const document = documentResult.body.json ?? {}
   const findings = []
   const networks = valueList(document.networks)
   const challengeNetworks = new Set()
+  const challengesByEntry = new Map(challengeResults.map(result => [entryKey(result), result]))
 
   if (documentResult.status < 200 || documentResult.status >= 300) {
     findings.push(`P1 - Document returned HTTP ${documentResult.status}; expected a successful JSON response.`)
@@ -526,7 +536,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
 
     if (result.status !== 402) {
       if (result.status >= 200 && result.status < 300) {
-        findings.push(`P3 - ${result.name} returned ${result.status} without a payment challenge for a no-payment ${result.method ?? 'POST'} probe; document this as free/trial access or move the 402 challenge before content.`)
+        if (!looksLikeOperationalHealthEndpoint(result)) {
+          findings.push(`P3 - ${result.name} returned ${result.status} without a payment challenge for a no-payment ${result.method ?? 'POST'} probe; document this as free/trial access or move the 402 challenge before content.`)
+        }
       }
       else if (result.status === 400 || result.status === 422) {
         findings.push(`P1 - ${result.name} returned validation HTTP ${result.status} before a payment challenge for a no-payment ${result.method ?? 'POST'} probe.`)
@@ -569,9 +581,14 @@ function findingList(documentResult, challengeResults, preflightResults, entries
   }
 
   for (const result of preflightResults) {
+    const challengeResult = challengesByEntry.get(entryKey(result))
+    if (!challengeResult || !hasPaymentChallenge(challengeResult)) continue
     const allowed = result.headers['access-control-allow-headers'] ?? ''
     if (allowed !== '*' && !/x-payment/i.test(allowed)) {
-      findings.push(`P1 - ${result.name} CORS preflight does not allow X-PAYMENT; observed allow headers: ${allowed || 'none'}.`)
+      const observed = result.status >= 400
+        ? `HTTP ${result.status}; allow headers: ${allowed || 'none'}`
+        : `allow headers: ${allowed || 'none'}`
+      findings.push(`P1 - ${result.name} CORS preflight does not allow X-PAYMENT; observed ${observed}.`)
     }
     const allowedMethods = result.headers['access-control-allow-methods'] ?? ''
     if (/delete|put|patch/i.test(allowedMethods)) {
