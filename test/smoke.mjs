@@ -25,9 +25,32 @@ const server = createServer((request, response) => {
         '/score/{wallet}': {
           get: {
             operationId: 'getScore',
+            'x-payment-info': {
+              price: { mode: 'fixed', currency: 'USD', amount: '0.001' },
+            },
             parameters: [
               { name: 'wallet', in: 'path', required: true, schema: { type: 'string' } },
             ],
+          },
+        },
+      },
+    }))
+    return
+  }
+
+  if (request.url === '/mismatch-openapi.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Mismatch Fixture', version: '1.0.0' },
+      servers: [{ url: serverUrl }],
+      paths: {
+        '/price-mismatch': {
+          get: {
+            operationId: 'priceMismatch',
+            'x-payment-info': {
+              price: { mode: 'fixed', currency: 'USD', amount: '0.002' },
+            },
           },
         },
       },
@@ -133,6 +156,26 @@ const server = createServer((request, response) => {
         asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
         payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
         resource: `${serverUrl}/api/premium/routing`,
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/price-mismatch') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'solana',
+        maxAmountRequired: '1000',
+        asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+        resource: `${serverUrl}/price-mismatch`,
         maxTimeoutSeconds: 60,
       }],
     }))
@@ -266,6 +309,16 @@ try {
   assert.match(stdout, /getScore/)
   assert.match(stdout, /\$0\.001/)
   assert.match(stdout, /No obvious launch-readiness findings/)
+
+  const mismatch = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/mismatch-openapi.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(mismatch.stdout, /priceMismatch/)
+  assert.match(mismatch.stdout, /documented price \$0\.002 does not match live 402 challenge price \$0\.001/)
 
   const manifest = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

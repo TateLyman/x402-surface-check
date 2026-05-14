@@ -98,6 +98,11 @@ function moneyFromDecimal(amount) {
   })}`
 }
 
+function numberFromDecimal(amount) {
+  const numeric = Number(amount)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
 function uniqueEntries(entries, limit) {
   const seen = new Set()
   return entries
@@ -125,6 +130,15 @@ function endpointUrl(rawPath, baseUrl, sourceUrl) {
   const resolvedBase = baseUrl || documentBaseUrl({}, sourceUrl)
   const base = value.startsWith('/') ? resolvedBase : `${resolvedBase.replace(/\/?$/, '/')}`
   return new URL(value, base).toString()
+}
+
+function operationExpectedPrice(operation) {
+  const price = operation?.['x-payment-info']?.price
+    ?? operation?.['x-payment']?.price
+    ?? operation?.payment?.price
+  const amount = price?.amount ?? price?.amountUsd ?? price?.usd
+  const numeric = numberFromDecimal(amount)
+  return numeric === null ? null : numeric
 }
 
 function endpointEntries(document, sourceUrl, limit) {
@@ -189,6 +203,7 @@ function endpointEntries(document, sourceUrl, limit) {
           name: operation.operationId ?? `${method.toUpperCase()} ${path}`,
           url,
           method: method.toUpperCase(),
+          expectedPriceUsd: operationExpectedPrice(operation),
         })
       }
     }
@@ -437,6 +452,14 @@ function challengePrice(accept, result) {
     : moneyFromAtomic(amount, acceptDecimals(accept))
 }
 
+function challengePriceUsd(accept, result) {
+  const amount = acceptAmountValue(accept)
+  if (usesDecimalAmount(accept, result)) return numberFromDecimal(amount)
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric)) return null
+  return numeric / (10 ** acceptDecimals(accept))
+}
+
 function hasPaymentChallenge(result) {
   const challenge = result.body.json
   return challengeAccepts(result).length > 0 || Boolean(challenge?.resource || challenge?.payment || result.headers?.['www-authenticate'])
@@ -457,6 +480,8 @@ function challengeSummary(result) {
     network: firstAccept.network ?? '',
     amount,
     price: hasChallenge ? challengePrice(firstAccept, result) : '',
+    priceUsd: hasChallenge ? challengePriceUsd(firstAccept, result) : null,
+    expectedPriceUsd: typeof result.expectedPriceUsd === 'number' ? result.expectedPriceUsd : null,
     payTo: firstAccept.payTo ?? '',
     asset: acceptAssetValue(firstAccept),
     timeout: firstAccept.maxTimeoutSeconds ?? '',
@@ -523,6 +548,12 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     }
     if (!summary.amount || !summary.payTo || !summary.asset) {
       findings.push(`P1 - ${result.name} challenge is missing amount/maxAmountRequired, payTo, or asset metadata.`)
+    }
+    if (summary.expectedPriceUsd !== null && summary.priceUsd !== null) {
+      const delta = Math.abs(summary.expectedPriceUsd - summary.priceUsd)
+      if (delta > 0.000001) {
+        findings.push(`P1 - ${result.name} documented price ${moneyFromDecimal(summary.expectedPriceUsd)} does not match live 402 challenge price ${moneyFromDecimal(summary.priceUsd)}.`)
+      }
     }
     for (const accept of challengeAccepts(result)) {
       if (looksLikePlaceholderPayTo(accept.payTo)) {
