@@ -99,8 +99,26 @@ function uniqueEntries(entries, limit) {
     .slice(0, Number.isFinite(limit) && limit > 0 ? limit : defaultLimit)
 }
 
+function documentBaseUrl(document, sourceUrl) {
+  if (typeof document.service_url === 'string') return document.service_url
+  if (typeof document.serviceUrl === 'string') return document.serviceUrl
+  if (typeof document.baseUrl === 'string') return document.baseUrl
+  if (typeof document.base_url === 'string') return document.base_url
+  return new URL('/', sourceUrl).toString()
+}
+
+function endpointUrl(rawPath, baseUrl, sourceUrl) {
+  const value = String(rawPath ?? '')
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  const resolvedBase = baseUrl || documentBaseUrl({}, sourceUrl)
+  const base = value.startsWith('/') ? resolvedBase : `${resolvedBase.replace(/\/?$/, '/')}`
+  return new URL(value, base).toString()
+}
+
 function endpointEntries(document, sourceUrl, limit) {
   const entries = []
+  const baseUrl = documentBaseUrl(document, sourceUrl)
 
   for (const [name, url] of Object.entries(document.x402Endpoints ?? {})) {
     if (typeof url === 'string' && url.startsWith('http')) {
@@ -118,6 +136,18 @@ function endpointEntries(document, sourceUrl, limit) {
           method: item.method ?? 'POST',
         })
       }
+    }
+  }
+
+  if (Array.isArray(document.endpoints)) {
+    for (const endpoint of document.endpoints) {
+      const rawPath = endpoint?.url ?? endpoint?.endpoint ?? endpoint?.path
+      if (!rawPath) continue
+      entries.push({
+        name: endpoint.id ?? endpoint.name ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
+        url: endpointUrl(rawPath, baseUrl, sourceUrl),
+        method: String(endpoint.method ?? 'POST').toUpperCase(),
+      })
     }
   }
 

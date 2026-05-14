@@ -35,6 +35,26 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/x402.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      endpoints: [{
+        path: '/api/weather/tokyo',
+        method: 'GET',
+        description: 'Tokyo weather data',
+        accepts: [{
+          scheme: 'exact',
+          network: 'base-sepolia',
+          maxAmountRequired: '1000',
+          asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+          payTo: '0x9C394847074aF408470e607e062C838a3Cce1240',
+        }],
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/score/%7Bwallet%7D') {
     response.statusCode = 402
     response.setHeader('content-type', 'application/json')
@@ -49,6 +69,26 @@ const server = createServer((request, response) => {
         asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
         payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
         resource: 'https://fixture.example/score/%7Bwallet%7D',
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/api/weather/tokyo') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'base-sepolia',
+        maxAmountRequired: '1000',
+        asset: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        payTo: '0x9C394847074aF408470e607e062C838a3Cce1240',
+        resource: `${serverUrl}/api/weather/tokyo`,
         maxTimeoutSeconds: 60,
       }],
     }))
@@ -96,6 +136,18 @@ try {
   assert.match(stdout, /getScore/)
   assert.match(stdout, /\$0\.001/)
   assert.match(stdout, /No obvious launch-readiness findings/)
+
+  const manifest = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/x402.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(manifest.stdout, /x402 manifest/)
+  assert.match(manifest.stdout, /tokyo/)
+  assert.match(manifest.stdout, /\$0\.001/)
+  assert.match(manifest.stdout, /base-sepolia/)
 
   const mpp = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
