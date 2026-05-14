@@ -17,7 +17,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields
-- MPP `WWW-Authenticate: Payment` challenges
+- MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
 - `amount` / `maxAmountRequired`, `asset`, `network`, and `payTo`
 - Placeholder recipients such as zero addresses and Solana system-program values
 - Testnet or staging rails such as Base Sepolia and Solana devnet

@@ -149,6 +149,31 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/x402v2/header') {
+    const requirements = Buffer.from(JSON.stringify({
+      x402Version: 2,
+      error: 'payment_required',
+      resource: {
+        url: `${serverUrl}/x402v2/header`,
+        description: 'Header-only x402 V2 fixture',
+        mimeType: 'application/json',
+      },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        maxTimeoutSeconds: 60,
+      }],
+    })).toString('base64url')
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('www-authenticate', `X402 requirements="${requirements}"`)
+    response.end(JSON.stringify({ error: 'payment_required' }))
+    return
+  }
+
   response.statusCode = 404
   response.end('not found')
 })
@@ -211,6 +236,19 @@ try {
   assert.match(mpp.stdout, /mpp/)
   assert.match(mpp.stdout, /mainnet/)
   assert.match(mpp.stdout, /\$0\.001/)
+
+  const x402Header = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    `${serverUrl}/x402v2/header`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(x402Header.stdout, /direct endpoint/)
+  assert.match(x402Header.stdout, /x402/)
+  assert.match(x402Header.stdout, /eip155:8453/)
+  assert.match(x402Header.stdout, /\$0\.02/)
 }
 finally {
   await new Promise(resolve => server.close(resolve))
