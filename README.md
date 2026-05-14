@@ -16,7 +16,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - No-payment HTTP 402 challenge shape
-- x402 v1 and v2 price fields
+- x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
 - MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
 - Atomic-unit `amount` / `maxAmountRequired` fields, plus legacy decimal `amount` + `token` x402 v1 challenges
 - `asset` or token metadata, `network`, and `payTo`

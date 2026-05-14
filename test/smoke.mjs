@@ -208,6 +208,24 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/schemes/v2') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('x-payment-required', 'true')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      schemes: [{
+        scheme: 'exact',
+        network: 'solana-mainnet',
+        maxAmountRequired: '0.05',
+        token: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        payTo: '5iYccm6tcJjvhX8Wdp3hMWnTcBRsN2cfgS3XdGHsehty',
+        resource: `${serverUrl}/schemes/v2`,
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/needs-param') {
     response.statusCode = 400
     response.setHeader('content-type', 'application/json')
@@ -313,6 +331,19 @@ try {
   assert.match(legacy.stdout, /\$10\.00/)
   assert.doesNotMatch(legacy.stdout, /\$0\.00001/)
   assert.doesNotMatch(legacy.stdout, /challenge is missing amount/)
+
+  const schemes = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    `${serverUrl}/schemes/v2`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(schemes.stdout, /solana-mainnet/)
+  assert.match(schemes.stdout, /\$0\.05/)
+  assert.doesNotMatch(schemes.stdout, /\$0\.000/)
+  assert.doesNotMatch(schemes.stdout, /challenge is missing amount/)
 
   const needsParam = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
