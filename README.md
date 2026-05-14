@@ -24,6 +24,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - HTTPS resource URLs and stable resource metadata
 - Browser CORS allowance for `X-PAYMENT`
 - Over-broad public method surfaces
+- Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
 
 ## Options
 

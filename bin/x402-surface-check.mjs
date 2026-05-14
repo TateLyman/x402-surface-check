@@ -373,6 +373,11 @@ function challengeAccepts(result) {
   return Array.isArray(result.body.json?.accepts) ? result.body.json.accepts : []
 }
 
+function hasPaymentChallenge(result) {
+  const challenge = result.body.json
+  return challengeAccepts(result).length > 0 || Boolean(challenge?.resource || challenge?.payment || result.headers?.['www-authenticate'])
+}
+
 function challengeSummary(result) {
   const challenge = result.body.json
   const firstAccept = challenge?.accepts?.[0] ?? {}
@@ -427,10 +432,27 @@ function findingList(documentResult, challengeResults, preflightResults, entries
   for (const result of challengeResults) {
     const summary = challengeSummary(result)
     if (summary.network) challengeNetworks.add(summary.network)
+    const hasChallenge = hasPaymentChallenge(result)
 
     if (result.status !== 402) {
-      findings.push(`P1 - ${result.name} returned ${result.status}, not 402, for a no-payment ${result.method ?? 'POST'} probe.`)
+      if (result.status >= 200 && result.status < 300) {
+        findings.push(`P3 - ${result.name} returned ${result.status} without a payment challenge for a no-payment ${result.method ?? 'POST'} probe; document this as free/trial access or move the 402 challenge before content.`)
+      }
+      else if (result.status === 400 || result.status === 422) {
+        findings.push(`P1 - ${result.name} returned validation HTTP ${result.status} before a payment challenge for a no-payment ${result.method ?? 'POST'} probe.`)
+      }
+      else if (result.status === 401 || result.status === 403) {
+        findings.push(`P2 - ${result.name} returned auth HTTP ${result.status} before a payment challenge for a no-payment ${result.method ?? 'POST'} probe; document the auth/free-tier order if this is intentional.`)
+      }
+      else {
+        findings.push(`P1 - ${result.name} returned ${result.status}, not 402, for a no-payment ${result.method ?? 'POST'} probe.`)
+      }
     }
+
+    if (!hasChallenge) {
+      continue
+    }
+
     if (summary.resourceUrl.startsWith('http://') || summary.extraResource.startsWith('http://')) {
       findings.push(`P1 - ${result.name} challenge uses a non-HTTPS resource URL: ${summary.resourceUrl || summary.extraResource}.`)
     }

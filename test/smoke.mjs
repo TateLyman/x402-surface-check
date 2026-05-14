@@ -174,6 +174,20 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/needs-param') {
+    response.statusCode = 400
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ error: 'missing date parameter' }))
+    return
+  }
+
+  if (request.url === '/free-trial') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ ok: true, tier: 'trial' }))
+    return
+  }
+
   response.statusCode = 404
   response.end('not found')
 })
@@ -249,6 +263,29 @@ try {
   assert.match(x402Header.stdout, /x402/)
   assert.match(x402Header.stdout, /eip155:8453/)
   assert.match(x402Header.stdout, /\$0\.02/)
+
+  const needsParam = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    `${serverUrl}/needs-param`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(needsParam.stdout, /validation HTTP 400 before a payment challenge/)
+  assert.doesNotMatch(needsParam.stdout, /challenge is missing amount/)
+  assert.doesNotMatch(needsParam.stdout, /does not repeat the resource URL/)
+
+  const freeTrial = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    `${serverUrl}/free-trial`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(freeTrial.stdout, /returned 200 without a payment challenge/)
+  assert.doesNotMatch(freeTrial.stdout, /challenge is missing amount/)
 }
 finally {
   await new Promise(resolve => server.close(resolve))
