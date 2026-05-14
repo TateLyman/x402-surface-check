@@ -275,6 +275,7 @@ try {
   assert.match(needsParam.stdout, /validation HTTP 400 before a payment challenge/)
   assert.doesNotMatch(needsParam.stdout, /challenge is missing amount/)
   assert.doesNotMatch(needsParam.stdout, /does not repeat the resource URL/)
+  assert.doesNotMatch(needsParam.stdout, /\$0\.000/)
 
   const freeTrial = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
@@ -286,6 +287,7 @@ try {
 
   assert.match(freeTrial.stdout, /returned 200 without a payment challenge/)
   assert.doesNotMatch(freeTrial.stdout, /challenge is missing amount/)
+  assert.doesNotMatch(freeTrial.stdout, /\$0\.000/)
 }
 finally {
   await new Promise(resolve => server.close(resolve))
