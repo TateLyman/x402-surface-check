@@ -25,6 +25,18 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Browser CORS allowance for `X-PAYMENT`
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
+- Object-valued document metadata such as facilitator objects, without `[object Object]` report artifacts
+
+## Public Proof
+
+Recent public no-payment checks have found and verified real launch fixes:
+
+- TensorFeed: parameter-required premium routes moved behind canonical x402 V2 challenges, then verified clean. https://github.com/solana-foundation/pay-skills/pull/68#issuecomment-4455360068
+- x402jp: weather routes that returned 500 now return structured Base x402 challenges. https://github.com/solana-foundation/pay-skills/pull/58#issuecomment-4455401355
+- Spraay: resource echo and browser payment-header behavior verified clean. https://github.com/solana-foundation/pay-skills/pull/60#issuecomment-4455519760
+- Agent Trust Bench: live discovery URL and browser-compatibility notes for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455484414
+
+Field notes and browser version: https://tateprograms.com/x402-surface-check.html
 
 ## Options
 
