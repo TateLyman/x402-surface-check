@@ -365,6 +365,24 @@ function valueList(value) {
   return []
 }
 
+function displayMetadataValue(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  if (Array.isArray(value)) {
+    return value.map(displayMetadataValue).filter(item => item && item !== '-').join(', ') || '-'
+  }
+  if (typeof value === 'object') {
+    const parts = [
+      value.name,
+      value.operator,
+      value.url,
+      value.jurisdiction,
+      value.network,
+    ].filter(item => item !== null && item !== undefined && item !== '').map(String)
+    return parts.join(' / ') || Object.keys(value).join(', ') || '-'
+  }
+  return String(value)
+}
+
 function capabilityList(value) {
   if (!Array.isArray(value)) return []
   return value.map(item => item?.id ?? item?.name ?? item).filter(Boolean).map(String)
@@ -520,7 +538,7 @@ function formatMarkdown(report) {
     `- Type: ${report.directEndpoint ? 'direct endpoint' : (document.openapi ? 'OpenAPI' : 'x402 manifest or JSON document')}`,
     `- Agent: ${document.agent?.name ?? '-'}`,
     `- Wallet: ${document.agent?.wallet ?? '-'}`,
-    `- Facilitator: ${document.facilitator ?? '-'}`,
+    `- Facilitator: ${displayMetadataValue(document.facilitator)}`,
     `- Networks: ${valueList(document.networks).join(', ') || '-'}`,
     `- Capabilities: ${capabilityList(document.capabilities).join(', ') || '-'}`,
     `- Probed endpoints: ${report.entries.length}`,

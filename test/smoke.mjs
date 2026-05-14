@@ -59,6 +59,11 @@ const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
       x402Version: 2,
+      facilitator: {
+        operator: 'Fixture Facilitator',
+        url: 'https://facilitator.example',
+        jurisdiction: 'US',
+      },
       payment: {
         network: 'eip155:8453',
         asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
@@ -237,6 +242,8 @@ try {
   assert.match(itemsManifest.stdout, /Premium routing recommendations/)
   assert.match(itemsManifest.stdout, /\$0\.02/)
   assert.match(itemsManifest.stdout, /eip155:8453/)
+  assert.match(itemsManifest.stdout, /Fixture Facilitator \/ https:\/\/facilitator\.example \/ US/)
+  assert.doesNotMatch(itemsManifest.stdout, /\[object Object\]/)
 
   const mpp = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
