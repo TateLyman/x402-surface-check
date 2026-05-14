@@ -179,6 +179,35 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/legacy/v1') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('x-402-version', '1.0')
+    response.setHeader('x-payment-amount', '10.0')
+    response.setHeader('x-payment-token', 'USDC')
+    response.setHeader('x-payment-networks', 'base-mainnet,solana-mainnet')
+    response.end(JSON.stringify({
+      error: 'Payment Required',
+      x402_version: '1.0',
+      accepts: [{
+        scheme: 'exact',
+        network: 'base-mainnet',
+        token: 'USDC',
+        amount: '10.0',
+        payTo: '0x1aabd080c594cfc7aae5c0d8200948353de87ba1',
+        description: 'Pay 10.0 USDC on Base mainnet for /legacy/v1',
+      }, {
+        scheme: 'exact',
+        network: 'solana-mainnet',
+        token: 'USDC',
+        amount: '10.0',
+        payTo: 'F1p61Q2EQfy2G4rsK8FQNdStDCS347cBBq8xb4s9E6p3',
+        description: 'Pay 10.0 USDC on Solana mainnet for /legacy/v1',
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/needs-param') {
     response.statusCode = 400
     response.setHeader('content-type', 'application/json')
@@ -270,6 +299,20 @@ try {
   assert.match(x402Header.stdout, /x402/)
   assert.match(x402Header.stdout, /eip155:8453/)
   assert.match(x402Header.stdout, /\$0\.02/)
+
+  const legacy = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    `${serverUrl}/legacy/v1`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(legacy.stdout, /direct endpoint/)
+  assert.match(legacy.stdout, /base-mainnet/)
+  assert.match(legacy.stdout, /\$10\.00/)
+  assert.doesNotMatch(legacy.stdout, /\$0\.00001/)
+  assert.doesNotMatch(legacy.stdout, /challenge is missing amount/)
 
   const needsParam = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

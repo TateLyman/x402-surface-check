@@ -88,6 +88,16 @@ function moneyFromAtomic(amount, decimals = 6) {
   })}`
 }
 
+function moneyFromDecimal(amount) {
+  if (amount === '' || amount === null || amount === undefined) return ''
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric)) return String(amount ?? '')
+  return `$${numeric.toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+    minimumFractionDigits: numeric < 0.01 ? 3 : 2,
+  })}`
+}
+
 function uniqueEntries(entries, limit) {
   const seen = new Set()
   return entries
@@ -264,6 +274,7 @@ function parsePaymentAuthenticate(value) {
       maxTimeoutSeconds: '',
       extra: {
         description: request.description ?? '',
+        decimals: request.methodDetails?.decimals ?? '',
         expires: params.expires ?? '',
         id: params.id ?? '',
         intent: params.intent ?? '',
@@ -392,6 +403,36 @@ function challengeAccepts(result) {
   return Array.isArray(result.body.json?.accepts) ? result.body.json.accepts : []
 }
 
+function acceptAmountValue(accept) {
+  return accept.maxAmountRequired ?? accept.maxAmount ?? accept.amount ?? ''
+}
+
+function acceptAssetValue(accept) {
+  return accept.asset ?? accept.token ?? accept.currency ?? ''
+}
+
+function acceptDecimals(accept) {
+  const value = accept.decimals ?? accept.extra?.decimals ?? accept.methodDetails?.decimals
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 6
+}
+
+function usesDecimalAmount(accept, result) {
+  if (accept.maxAmountRequired !== undefined || accept.maxAmount !== undefined) return false
+  if (accept.amount === undefined || accept.amount === null || accept.amount === '') return false
+  const amount = String(accept.amount)
+  if (amount.includes('.')) return true
+  if (!accept.asset && (accept.token || result.headers?.['x-payment-token'])) return true
+  return result.headers?.['x-payment-amount'] === amount
+}
+
+function challengePrice(accept, result) {
+  const amount = acceptAmountValue(accept)
+  return usesDecimalAmount(accept, result)
+    ? moneyFromDecimal(amount)
+    : moneyFromAtomic(amount, acceptDecimals(accept))
+}
+
 function hasPaymentChallenge(result) {
   const challenge = result.body.json
   return challengeAccepts(result).length > 0 || Boolean(challenge?.resource || challenge?.payment || result.headers?.['www-authenticate'])
@@ -401,7 +442,7 @@ function challengeSummary(result) {
   const challenge = result.body.json
   const firstAccept = challenge?.accepts?.[0] ?? {}
   const hasChallenge = hasPaymentChallenge(result)
-  const amount = firstAccept.amount ?? firstAccept.maxAmountRequired ?? firstAccept.maxAmount ?? ''
+  const amount = acceptAmountValue(firstAccept)
   const resourceUrl = challenge?.resource?.url ?? firstAccept.resource ?? ''
   const extraResource = firstAccept.extra?.resource ?? firstAccept.resource ?? ''
 
@@ -411,9 +452,9 @@ function challengeSummary(result) {
     resourceUrl,
     network: firstAccept.network ?? '',
     amount,
-    price: moneyFromAtomic(amount),
+    price: hasChallenge ? challengePrice(firstAccept, result) : '',
     payTo: firstAccept.payTo ?? '',
-    asset: firstAccept.asset ?? '',
+    asset: acceptAssetValue(firstAccept),
     timeout: firstAccept.maxTimeoutSeconds ?? '',
     extraResource,
   }

@@ -18,7 +18,8 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields
 - MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
-- `amount` / `maxAmountRequired`, `asset`, `network`, and `payTo`
+- Atomic-unit `amount` / `maxAmountRequired` fields, plus legacy decimal `amount` + `token` x402 v1 challenges
+- `asset` or token metadata, `network`, and `payTo`
 - Placeholder recipients such as zero addresses and Solana system-program values
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
