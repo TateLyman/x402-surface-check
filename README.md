@@ -14,7 +14,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 
 ## What It Checks
 
-- Manifest or OpenAPI endpoint discovery
+- Manifest endpoint discovery from `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields
 - MPP `WWW-Authenticate: Payment` challenges
