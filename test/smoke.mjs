@@ -63,6 +63,44 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/examples-openapi.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Examples Fixture', version: '1.0.0' },
+      servers: [{ url: serverUrl }],
+      paths: {
+        '/brands': {
+          get: {
+            operationId: 'listBrandsWithExample',
+            parameters: [{
+              name: 'country_code',
+              in: 'query',
+              required: true,
+              schema: { type: 'string', example: 'us' },
+            }],
+          },
+        },
+        '/orders': {
+          post: {
+            operationId: 'createOrderWithExample',
+            requestBody: {
+              content: {
+                'application/json': {
+                  example: {
+                    email: 'agent@example.com',
+                    items: [{ product_id: 'sku_123', product_value: 25 }],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }))
+    return
+  }
+
   if (request.url === '/x402.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -112,6 +150,20 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({
       name: 'Linked Discovery Fixture',
       discovery_url: `${serverUrl}/items.json`,
+    }))
+    return
+  }
+
+  if (request.url === '/openapi-link.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'Linked OpenAPI Fixture',
+      openapi: `${serverUrl}/examples-openapi.json`,
+      networks: [{
+        id: 'solana',
+        network: 'solana-mainnet',
+        asset: 'USDC',
+      }],
     }))
     return
   }
@@ -200,6 +252,46 @@ const server = createServer((request, response) => {
         maxTimeoutSeconds: 60,
       }],
     }))
+    return
+  }
+
+  if (request.url === '/brands?country_code=us') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ ok: true, brands: ['Example'] }))
+    return
+  }
+
+  if (request.url === '/orders') {
+    let body = ''
+    request.on('data', chunk => {
+      body += chunk
+    })
+    request.on('end', () => {
+      const parsed = body ? JSON.parse(body) : {}
+      if (parsed.email !== 'agent@example.com' || !Array.isArray(parsed.items)) {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ error: 'missing order example' }))
+        return
+      }
+      response.statusCode = 402
+      response.setHeader('content-type', 'application/json')
+      response.setHeader('access-control-allow-origin', '*')
+      response.end(JSON.stringify({
+        x402Version: 1,
+        error: 'Payment required',
+        accepts: [{
+          scheme: 'exact',
+          network: 'solana',
+          maxAmountRequired: '25000',
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+          resource: `${serverUrl}/orders`,
+          maxTimeoutSeconds: 60,
+        }],
+      }))
+    })
     return
   }
 
@@ -343,6 +435,19 @@ try {
   assert.match(mismatch.stdout, /priceMismatch/)
   assert.match(mismatch.stdout, /documented price \$0\.002 does not match live 402 challenge price \$0\.001/)
 
+  const examples = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/examples-openapi.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(examples.stdout, /listBrandsWithExample/)
+  assert.match(examples.stdout, /createOrderWithExample/)
+  assert.match(examples.stdout, /\$0\.025/)
+  assert.doesNotMatch(examples.stdout, /listBrandsWithExample returned validation HTTP 400/)
+  assert.doesNotMatch(examples.stdout, /createOrderWithExample returned validation HTTP 400/)
+
   const manifest = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
     `${serverUrl}/x402.json`,
@@ -378,6 +483,18 @@ try {
   assert.match(linkedDiscovery.stdout, new RegExp(`Source: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/well-known\\.json`))
   assert.match(linkedDiscovery.stdout, new RegExp(`Document: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/items\\.json`))
   assert.match(linkedDiscovery.stdout, /Premium routing recommendations/)
+
+  const linkedOpenApi = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/openapi-link.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(linkedOpenApi.stdout, new RegExp(`Source: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/openapi-link\\.json`))
+  assert.match(linkedOpenApi.stdout, new RegExp(`Document: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/examples-openapi\\.json`))
+  assert.match(linkedOpenApi.stdout, /createOrderWithExample/)
+  assert.doesNotMatch(linkedOpenApi.stdout, /\[object Object\]/)
 
   const mpp = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

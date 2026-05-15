@@ -15,7 +15,8 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 ## What It Checks
 
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
-- Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, or `resourcesUrl`
+- Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
+- OpenAPI query/path examples and JSON request-body examples for safer no-payment probes
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
 - MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
@@ -29,7 +30,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
 - Operational health/status endpoints, without treating expected free health checks as paid-route failures
-- Object-valued document metadata such as facilitator objects, without `[object Object]` report artifacts
+- Object-valued document metadata such as facilitator or network objects, without `[object Object]` report artifacts
 
 ## Public Proof
 
@@ -41,7 +42,8 @@ Recent public no-payment checks have found and verified real launch fixes:
 - UZPROOF: schemes-style Solana x402 challenge and browser payment-header behavior verified clean. https://github.com/solana-foundation/pay-skills/pull/28#issuecomment-4455613892
 - HYRE Agent: OpenAPI-declared prices found 10x below live 402 challenge prices. https://github.com/solana-foundation/pay-skills/pull/19#issuecomment-4455641258
 - anchor-x402: multi-rail x402 challenges verified, with browser preflight blockers isolated before merge. https://github.com/solana-foundation/pay-skills/pull/47#issuecomment-4455678163
-- Agent Trust Bench: live discovery URL and browser-compatibility notes for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455484414
+- Agent Trust Bench: linked discovery URL and browser-compatibility notes verified clean for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455722170
+- Solrouter: private LLM inference route verified with HTTPS resource-binding and price-alignment notes. https://github.com/solana-foundation/pay-skills/pull/39#issuecomment-4455800060
 
 Field notes and browser version: https://tateprograms.com/x402-surface-check.html
 
