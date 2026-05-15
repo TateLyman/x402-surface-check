@@ -157,21 +157,48 @@ function operationExpectedPrice(operation) {
   return numeric === null ? null : numeric
 }
 
-function exampleValue(schemaOrParameter) {
+function resolveLocalRef(ref, document) {
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) return undefined
+  return ref
+    .slice(2)
+    .split('/')
+    .map(part => part.replaceAll('~1', '/').replaceAll('~0', '~'))
+    .reduce((value, part) => value?.[part], document)
+}
+
+function resolveSchema(schema, document, seen = new Set()) {
+  if (!schema || typeof schema !== 'object') return schema
+  if (!schema.$ref) return schema
+  if (seen.has(schema.$ref)) return schema
+  const resolved = resolveLocalRef(schema.$ref, document)
+  if (!resolved) return schema
+  seen.add(schema.$ref)
+  return resolveSchema(resolved, document, seen)
+}
+
+function exampleValue(schemaOrParameter, document) {
   if (!schemaOrParameter || typeof schemaOrParameter !== 'object') return undefined
-  const schema = schemaOrParameter.schema ?? schemaOrParameter
+  const schema = resolveSchema(schemaOrParameter.schema ?? schemaOrParameter, document)
   const value = schemaOrParameter.example
+    ?? schema.const
     ?? schema.example
     ?? schema.default
     ?? (Array.isArray(schema.enum) ? schema.enum[0] : undefined)
   if (value !== undefined) return value
-  if (schema.type === 'string') return ''
-  if (schema.type === 'number' || schema.type === 'integer') return 0
+  if (schema.type === 'string') {
+    if (schema.format === 'uri') return 'https://example.com'
+    if (schema.format === 'date-time') return '2026-01-01T00:00:00.000Z'
+    if (schema.format === 'date') return '2026-01-01'
+    if (Number(schema.minLength) > 0) return 'example'
+    return ''
+  }
+  if (schema.type === 'integer') return Number.isFinite(Number(schema.minimum)) ? Number(schema.minimum) : 1
+  if (schema.type === 'number') return Number.isFinite(Number(schema.minimum)) ? Number(schema.minimum) : 1
   if (schema.type === 'boolean') return false
   return undefined
 }
 
-function mediaExample(media) {
+function mediaExample(media, document) {
   if (!media || typeof media !== 'object') return undefined
   if (media.example !== undefined) return media.example
   const examples = media.examples && typeof media.examples === 'object'
@@ -181,7 +208,7 @@ function mediaExample(media) {
   if (firstExample?.value !== undefined) return firstExample.value
   if (firstExample?.externalValue) return undefined
 
-  const schema = media.schema
+  const schema = resolveSchema(media.schema, document)
   if (!schema || typeof schema !== 'object' || schema.type !== 'object') return undefined
   const body = {}
   const properties = schema.properties && typeof schema.properties === 'object'
@@ -191,29 +218,35 @@ function mediaExample(media) {
 
   for (const [name, property] of Object.entries(properties)) {
     if (!required.has(name)) continue
-    const value = exampleValue(property)
+    const value = exampleValue(property, document)
     if (value !== undefined) body[name] = value
   }
 
   return Object.keys(body).length ? body : undefined
 }
 
-function operationRequestBody(operation) {
+function operationRequestBody(operation, document) {
   const content = operation?.requestBody?.content
   if (!content || typeof content !== 'object') return undefined
   const media = content['application/json']
     ?? content['application/*+json']
     ?? Object.entries(content).find(([type]) => /json/i.test(type))?.[1]
-  return mediaExample(media)
+  return mediaExample(media, document)
 }
 
-function openApiProbeUrl(path, operation, baseUrl) {
+function operationPaymentSignal(operation) {
+  if (operation?.['x-payment-info'] || operation?.['x-payment'] || operation?.['x-x402'] || operation?.payment) return 2
+  if (operation?.responses && Object.hasOwn(operation.responses, '402')) return 1
+  return 0
+}
+
+function openApiProbeUrl(path, operation, baseUrl, document) {
   const parameters = Array.isArray(operation?.parameters) ? operation.parameters : []
   let resolvedPath = path
   const searchParams = new URLSearchParams()
 
   for (const parameter of parameters) {
-    const value = exampleValue(parameter)
+    const value = exampleValue(parameter, document)
     if (value === undefined || value === '') continue
     if (parameter.in === 'path') {
       resolvedPath = resolvedPath.replaceAll(`{${parameter.name}}`, encodeURIComponent(String(value)))
@@ -282,22 +315,28 @@ function endpointEntries(document, sourceUrl, limit) {
 
   if (document.openapi && document.paths && typeof document.paths === 'object') {
     const baseUrl = openApiServerBaseUrl(document, sourceUrl)
+    const openApiEntries = []
 
     for (const [path, operations] of Object.entries(document.paths)) {
       if (!operations || typeof operations !== 'object') continue
       for (const method of methods) {
         const operation = operations[method]
         if (!operation || typeof operation !== 'object') continue
-        const url = openApiProbeUrl(path, operation, baseUrl)
-        entries.push({
+        const url = openApiProbeUrl(path, operation, baseUrl, document)
+        openApiEntries.push({
           name: operation.operationId ?? `${method.toUpperCase()} ${path}`,
           url,
           method: method.toUpperCase(),
           expectedPriceUsd: operationExpectedPrice(operation),
-          requestBody: operationRequestBody(operation),
+          requestBody: operationRequestBody(operation, document),
+          paymentSignal: operationPaymentSignal(operation),
         })
       }
     }
+
+    entries.push(...openApiEntries
+      .sort((a, b) => b.paymentSignal - a.paymentSignal)
+      .map(({ paymentSignal, ...entry }) => entry))
   }
 
   for (const resource of document.resources ?? []) {

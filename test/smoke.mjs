@@ -129,6 +129,71 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/mixed-openapi.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Mixed Fixture', version: '1.0.0' },
+      servers: [{ url: serverUrl }],
+      paths: {
+        '/docs': {
+          get: {
+            operationId: 'docsLanding',
+            responses: { 200: { description: 'Public docs' } },
+          },
+        },
+        '/paid': {
+          post: {
+            operationId: 'paidOperation',
+            'x-payment-info': {
+              price: { mode: 'fixed', currency: 'USD', amount: '0.004' },
+            },
+            responses: { 402: { description: 'Payment required' } },
+          },
+        },
+      },
+    }))
+    return
+  }
+
+  if (request.url === '/ref-openapi.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Ref Fixture', version: '1.0.0' },
+      servers: [{ url: serverUrl }],
+      paths: {
+        '/ref-paid': {
+          post: {
+            operationId: 'paidWithRefBody',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/RefPaidRequest' },
+                },
+              },
+            },
+            responses: { 402: { description: 'Payment required' } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          RefPaidRequest: {
+            type: 'object',
+            required: ['target', 'tier', 'count'],
+            properties: {
+              target: { type: 'string', format: 'uri' },
+              tier: { type: 'string', enum: ['quick', 'deep'] },
+              count: { type: 'integer', minimum: 1 },
+            },
+          },
+        },
+      },
+    }))
+    return
+  }
+
   if (request.url === '/x402.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -301,6 +366,59 @@ const server = createServer((request, response) => {
         maxTimeoutSeconds: 60,
       }],
     }))
+    return
+  }
+
+  if (request.url === '/paid') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'solana',
+        maxAmountRequired: '4000',
+        asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+        resource: `${serverUrl}/paid`,
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/ref-paid') {
+    let body = ''
+    request.on('data', chunk => {
+      body += chunk
+    })
+    request.on('end', () => {
+      const parsed = body ? JSON.parse(body) : {}
+      if (parsed.target !== 'https://example.com' || parsed.tier !== 'quick' || parsed.count !== 1) {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ error: 'missing ref body example' }))
+        return
+      }
+      response.statusCode = 402
+      response.setHeader('content-type', 'application/json')
+      response.setHeader('access-control-allow-origin', '*')
+      response.end(JSON.stringify({
+        x402Version: 1,
+        error: 'Payment required',
+        accepts: [{
+          scheme: 'exact',
+          network: 'solana',
+          maxAmountRequired: '6000',
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+          resource: `${serverUrl}/ref-paid`,
+          maxTimeoutSeconds: 60,
+        }],
+      }))
+    })
     return
   }
 
@@ -554,6 +672,31 @@ try {
   assert.match(gatewayBasePath.stdout, /\$0\.003/)
   assert.doesNotMatch(gatewayBasePath.stdout, /protectedByGatewayBasePath returned 200 without a payment challenge/)
   assert.doesNotMatch(gatewayBasePath.stdout, /unguarded-root/)
+
+  const paidFirst = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/mixed-openapi.json`,
+    '--limit',
+    '1',
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(paidFirst.stdout, /paidOperation/)
+  assert.match(paidFirst.stdout, /\$0\.004/)
+  assert.doesNotMatch(paidFirst.stdout, /docsLanding/)
+  assert.doesNotMatch(paidFirst.stdout, /returned 200 without a payment challenge/)
+
+  const refBody = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/ref-openapi.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(refBody.stdout, /paidWithRefBody/)
+  assert.match(refBody.stdout, /\$0\.006/)
+  assert.doesNotMatch(refBody.stdout, /validation HTTP 400/)
 
   const manifest = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

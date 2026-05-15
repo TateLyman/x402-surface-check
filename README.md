@@ -17,7 +17,8 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
 - OpenAPI `servers[]` base-path preservation, so `/paths` are probed through the documented gateway rather than the domain root
-- OpenAPI query/path examples and JSON request-body examples for safer no-payment probes
+- OpenAPI query/path examples, JSON request-body examples, and local `$ref` request schemas for safer no-payment probes
+- OpenAPI paid-operation prioritization, so docs and discovery routes do not consume the probe limit before payment-bearing operations
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
 - MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
