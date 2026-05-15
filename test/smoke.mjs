@@ -109,6 +109,26 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/gateway/openapi.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Gateway Fixture', version: '1.0.0' },
+      servers: [{ url: `${serverUrl}/gateway` }],
+      paths: {
+        '/pay/v1/protected': {
+          get: {
+            operationId: 'protectedByGatewayBasePath',
+            'x-payment-info': {
+              price: { mode: 'fixed', currency: 'USD', amount: '0.003' },
+            },
+          },
+        },
+      },
+    }))
+    return
+  }
+
   if (request.url === '/x402.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -261,6 +281,33 @@ const server = createServer((request, response) => {
         maxTimeoutSeconds: 60,
       }],
     }))
+    return
+  }
+
+  if (request.url === '/gateway/pay/v1/protected') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'solana',
+        maxAmountRequired: '3000',
+        asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+        resource: `${serverUrl}/gateway/pay/v1/protected`,
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/pay/v1/protected') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ ok: true, route: 'unguarded-root' }))
     return
   }
 
@@ -495,6 +542,19 @@ try {
   assert.doesNotMatch(examples.stdout, /listBrandsWithExample returned validation HTTP 400/)
   assert.doesNotMatch(examples.stdout, /createOrderWithExample returned validation HTTP 400/)
 
+  const gatewayBasePath = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/gateway/openapi.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(gatewayBasePath.stdout, /protectedByGatewayBasePath/)
+  assert.match(gatewayBasePath.stdout, new RegExp(`${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/gateway\\/pay\\/v1\\/protected`))
+  assert.match(gatewayBasePath.stdout, /\$0\.003/)
+  assert.doesNotMatch(gatewayBasePath.stdout, /protectedByGatewayBasePath returned 200 without a payment challenge/)
+  assert.doesNotMatch(gatewayBasePath.stdout, /unguarded-root/)
+
   const manifest = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
     `${serverUrl}/x402.json`,
@@ -619,6 +679,7 @@ try {
   ], { cwd: new URL('..', import.meta.url) })
 
   assert.match(noOrigin.stdout, /CORS preflight does not allow the requesting origin/)
+  assert.match(noOrigin.stdout, /402 challenge response does not allow the requesting origin/)
 
   const needsParam = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

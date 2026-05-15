@@ -132,6 +132,12 @@ function endpointUrl(rawPath, baseUrl, sourceUrl) {
   return new URL(value, base).toString()
 }
 
+function openApiServerBaseUrl(document, sourceUrl) {
+  const rawUrl = document.servers?.find(server => typeof server?.url === 'string')?.url
+  if (!rawUrl) return documentBaseUrl(document, sourceUrl)
+  return endpointUrl(rawUrl, documentBaseUrl(document, sourceUrl), sourceUrl)
+}
+
 function linkedDiscoveryUrl(document, sourceUrl) {
   const rawUrl = document?.discovery_url
     ?? document?.discoveryUrl
@@ -217,7 +223,9 @@ function openApiProbeUrl(path, operation, baseUrl) {
     }
   }
 
-  const url = path.startsWith('http') ? new URL(resolvedPath) : new URL(resolvedPath, baseUrl)
+  const url = /^https?:\/\//i.test(String(resolvedPath))
+    ? new URL(resolvedPath)
+    : new URL(String(resolvedPath).replace(/^\/+/, ''), `${baseUrl.replace(/\/?$/, '/')}`)
   for (const [name, value] of searchParams.entries()) {
     url.searchParams.set(name, value)
   }
@@ -273,8 +281,7 @@ function endpointEntries(document, sourceUrl, limit) {
   }
 
   if (document.openapi && document.paths && typeof document.paths === 'object') {
-    const baseUrl = document.servers?.find(server => typeof server?.url === 'string')?.url
-      ?? sourceUrl
+    const baseUrl = openApiServerBaseUrl(document, sourceUrl)
 
     for (const [path, operations] of Object.entries(document.paths)) {
       if (!operations || typeof operations !== 'object') continue
@@ -428,7 +435,7 @@ async function fetchDocument(url) {
   }
 }
 
-async function probeEndpoint(entry) {
+async function probeEndpoint(entry, origin) {
   const method = entry.method ?? 'POST'
   const response = await fetch(entry.url, {
     method,
@@ -436,6 +443,7 @@ async function probeEndpoint(entry) {
       'user-agent': `x402-surface-check/${packageJson.version}`,
       accept: 'application/json',
       'content-type': 'application/json',
+      ...(origin ? { origin } : {}),
     },
     body: method === 'GET' || method === 'HEAD'
       ? undefined
@@ -656,6 +664,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
       continue
     }
 
+    if (!result.headers?.['access-control-allow-origin']) {
+      findings.push(`P1 - ${result.name} 402 challenge response does not allow the requesting origin; browser agents cannot read the payment requirements even if preflight succeeds.`)
+    }
     if (summary.resourceUrl.startsWith('http://') || summary.extraResource.startsWith('http://')) {
       findings.push(`P1 - ${result.name} challenge uses a non-HTTPS resource URL: ${summary.resourceUrl || summary.extraResource}.`)
     }
@@ -796,7 +807,7 @@ async function runCheck(options) {
   const preflights = []
 
   for (const entry of entries) {
-    challenges.push(await probeEndpoint(entry))
+    challenges.push(await probeEndpoint(entry, origin))
     preflights.push(await probePreflight(entry, origin))
   }
 

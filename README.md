@@ -16,6 +16,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
+- OpenAPI `servers[]` base-path preservation, so `/paths` are probed through the documented gateway rather than the domain root
 - OpenAPI query/path examples and JSON request-body examples for safer no-payment probes
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
@@ -26,7 +27,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Placeholder recipients such as zero addresses and Solana system-program values
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
-- Browser CORS allowance for the requesting origin and `X-PAYMENT`
+- Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
 - Operational health/status endpoints, without treating expected free health checks as paid-route failures
