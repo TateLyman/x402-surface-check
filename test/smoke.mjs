@@ -107,6 +107,15 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/well-known.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'Linked Discovery Fixture',
+      discovery_url: `${serverUrl}/items.json`,
+    }))
+    return
+  }
+
   if (request.url === '/health') {
     response.statusCode = 200
     response.setHeader('content-type', 'application/json')
@@ -358,6 +367,17 @@ try {
   assert.match(itemsManifest.stdout, /eip155:8453/)
   assert.match(itemsManifest.stdout, /Fixture Facilitator \/ https:\/\/facilitator\.example \/ US/)
   assert.doesNotMatch(itemsManifest.stdout, /\[object Object\]/)
+
+  const linkedDiscovery = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/well-known.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(linkedDiscovery.stdout, new RegExp(`Source: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/well-known\\.json`))
+  assert.match(linkedDiscovery.stdout, new RegExp(`Document: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/items\\.json`))
+  assert.match(linkedDiscovery.stdout, /Premium routing recommendations/)
 
   const mpp = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

@@ -15,6 +15,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 ## What It Checks
 
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
+- Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, or `resourcesUrl`
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
 - MPP `WWW-Authenticate: Payment` and x402 V2 `WWW-Authenticate: X402 requirements=...` challenges
@@ -39,6 +40,7 @@ Recent public no-payment checks have found and verified real launch fixes:
 - Spraay: resource echo and browser payment-header behavior verified clean. https://github.com/solana-foundation/pay-skills/pull/60#issuecomment-4455519760
 - UZPROOF: schemes-style Solana x402 challenge and browser payment-header behavior verified clean. https://github.com/solana-foundation/pay-skills/pull/28#issuecomment-4455613892
 - HYRE Agent: OpenAPI-declared prices found 10x below live 402 challenge prices. https://github.com/solana-foundation/pay-skills/pull/19#issuecomment-4455641258
+- anchor-x402: multi-rail x402 challenges verified, with browser preflight blockers isolated before merge. https://github.com/solana-foundation/pay-skills/pull/47#issuecomment-4455678163
 - Agent Trust Bench: live discovery URL and browser-compatibility notes for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455484414
 
 Field notes and browser version: https://tateprograms.com/x402-surface-check.html

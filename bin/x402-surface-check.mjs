@@ -132,6 +132,15 @@ function endpointUrl(rawPath, baseUrl, sourceUrl) {
   return new URL(value, base).toString()
 }
 
+function linkedDiscoveryUrl(document, sourceUrl) {
+  const rawUrl = document?.discovery_url
+    ?? document?.discoveryUrl
+    ?? document?.resources_url
+    ?? document?.resourcesUrl
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return ''
+  return endpointUrl(rawUrl, documentBaseUrl(document, sourceUrl), sourceUrl)
+}
+
 function operationExpectedPrice(operation) {
   const price = operation?.['x-payment-info']?.price
     ?? operation?.['x-payment']?.price
@@ -620,6 +629,7 @@ function formatMarkdown(report) {
   return [
     '# x402 Public Surface Check',
     '',
+    ...(report.sourceDocument ? [`Source: ${report.sourceDocument.url}`] : []),
     `Document: ${report.document.url}`,
     `Checked: ${report.checkedAt}`,
     'Scope: manifest/OpenAPI parsing, no-payment endpoint probes, and browser-style CORS preflight. No payment headers or paid calls.',
@@ -656,7 +666,8 @@ function formatMarkdown(report) {
 }
 
 async function runCheck(options) {
-  const document = options.endpoint
+  let sourceDocument = null
+  let document = options.endpoint
     ? {
         status: 200,
         ok: true,
@@ -665,9 +676,25 @@ async function runCheck(options) {
         body: { text: '{}', json: {} },
       }
     : await fetchDocument(options.url)
-  const entries = options.endpoint
+  let entries = options.endpoint
     ? [{ name: new URL(options.url).pathname.split('/').filter(Boolean).at(-1) ?? options.url, url: options.url, method: options.method || 'POST' }]
     : (document.body.json ? endpointEntries(document.body.json, document.url, options.limit) : [])
+
+  if (!options.endpoint && entries.length === 0 && document.body.json) {
+    const discoveryUrl = linkedDiscoveryUrl(document.body.json, document.url)
+    if (discoveryUrl) {
+      const followedDocument = await fetchDocument(discoveryUrl)
+      const followedEntries = followedDocument.body.json
+        ? endpointEntries(followedDocument.body.json, followedDocument.url, options.limit)
+        : []
+      if (followedEntries.length > 0) {
+        sourceDocument = document
+        document = followedDocument
+        entries = followedEntries
+      }
+    }
+  }
+
   const origin = options.origin ?? new URL(document.url).origin
   const challenges = []
   const preflights = []
@@ -686,6 +713,7 @@ async function runCheck(options) {
     origin,
     challenges,
     preflights,
+    sourceDocument,
   }
   report.findings = findingList(document, challenges, preflights, entries)
   return report
