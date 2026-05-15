@@ -14,7 +14,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 
 ## What It Checks
 
-- Manifest endpoint discovery from `items[]`, `endpoints[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
+- Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
 - OpenAPI query/path examples and JSON request-body examples for safer no-payment probes
 - No-payment HTTP 402 challenge shape
@@ -26,7 +26,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Placeholder recipients such as zero addresses and Solana system-program values
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
-- Browser CORS allowance for `X-PAYMENT`
+- Browser CORS allowance for the requesting origin and `X-PAYMENT`
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
 - Operational health/status endpoints, without treating expected free health checks as paid-route failures
@@ -44,6 +44,7 @@ Recent public no-payment checks have found and verified real launch fixes:
 - anchor-x402: multi-rail x402 challenges verified, with browser preflight blockers isolated before merge. https://github.com/solana-foundation/pay-skills/pull/47#issuecomment-4455678163
 - Agent Trust Bench: linked discovery URL and browser-compatibility notes verified clean for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455722170
 - Solrouter: private LLM inference route verified with HTTPS resource-binding and price-alignment notes. https://github.com/solana-foundation/pay-skills/pull/39#issuecomment-4455800060
+- Tetrac: Solana market-data payment gates verified, with browser payment-header preflight blocker isolated. https://github.com/solana-foundation/pay-skills/pull/32#issuecomment-4455923744
 
 Field notes and browser version: https://tateprograms.com/x402-surface-check.html
 

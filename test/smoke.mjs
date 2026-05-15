@@ -6,6 +6,14 @@ import { strict as assert } from 'node:assert'
 const execFileAsync = promisify(execFile)
 
 const server = createServer((request, response) => {
+  if (request.method === 'OPTIONS' && request.url === '/no-origin') {
+    response.statusCode = 204
+    response.setHeader('access-control-allow-headers', 'content-type,x-payment')
+    response.setHeader('access-control-allow-methods', 'GET, OPTIONS')
+    response.end()
+    return
+  }
+
   if (request.method === 'OPTIONS') {
     response.statusCode = 204
     response.setHeader('access-control-allow-origin', '*')
@@ -150,6 +158,27 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({
       name: 'Linked Discovery Fixture',
       discovery_url: `${serverUrl}/items.json`,
+    }))
+    return
+  }
+
+  if (request.url === '/resources.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      resources: [{
+        path: '/api/premium/routing',
+        url: `${serverUrl}/api/premium/routing`,
+        method: 'GET',
+        description: 'Premium routing resource object',
+        accepts: [{
+          scheme: 'exact',
+          network: 'eip155:8453',
+          amount: '20000',
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+          payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        }],
+      }],
     }))
     return
   }
@@ -335,6 +364,24 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/no-origin') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}/no-origin` },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/legacy/v1') {
     response.statusCode = 402
     response.setHeader('content-type', 'application/json')
@@ -473,6 +520,18 @@ try {
   assert.match(itemsManifest.stdout, /Fixture Facilitator \/ https:\/\/facilitator\.example \/ US/)
   assert.doesNotMatch(itemsManifest.stdout, /\[object Object\]/)
 
+  const resourceManifest = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/resources.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(resourceManifest.stdout, /premium\/routing/)
+  assert.match(resourceManifest.stdout, /\$0\.02/)
+  assert.match(resourceManifest.stdout, /eip155:8453/)
+  assert.doesNotMatch(resourceManifest.stdout, /Document does not expose/)
+
   const linkedDiscovery = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
     `${serverUrl}/well-known.json`,
@@ -548,6 +607,18 @@ try {
   assert.match(schemes.stdout, /\$0\.05/)
   assert.doesNotMatch(schemes.stdout, /\$0\.000/)
   assert.doesNotMatch(schemes.stdout, /challenge is missing amount/)
+
+  const noOrigin = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    `${serverUrl}/no-origin`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(noOrigin.stdout, /CORS preflight does not allow the requesting origin/)
 
   const needsParam = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

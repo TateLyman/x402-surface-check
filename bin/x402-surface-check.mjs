@@ -294,17 +294,32 @@ function endpointEntries(document, sourceUrl, limit) {
   }
 
   for (const resource of document.resources ?? []) {
-    if (typeof resource !== 'string') continue
-    const match = resource.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)/i)
-    if (!match) continue
-    const [, method, rawPath] = match
-    const url = rawPath.startsWith('http')
-      ? rawPath
-      : new URL(rawPath, document.baseUrl ?? sourceUrl).toString()
+    if (typeof resource === 'string') {
+      const match = resource.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)/i)
+      if (!match) continue
+      const [, method, rawPath] = match
+      const url = rawPath.startsWith('http')
+        ? rawPath
+        : new URL(rawPath, document.baseUrl ?? sourceUrl).toString()
+      entries.push({
+        name: rawPath.split('/').filter(Boolean).at(-1) ?? rawPath,
+        url,
+        method: method.toUpperCase(),
+      })
+      continue
+    }
+
+    if (!resource || typeof resource !== 'object') continue
+    const rawPath = resource.url ?? resource.endpoint ?? resource.resource ?? resource.path
+    if (!rawPath) continue
     entries.push({
-      name: rawPath.split('/').filter(Boolean).at(-1) ?? rawPath,
-      url,
-      method: method.toUpperCase(),
+      name: resource.id
+        ?? resource.name
+        ?? resource.title
+        ?? String(resource.path ?? rawPath).split('/').filter(Boolean).at(-1)
+        ?? String(rawPath),
+      url: endpointUrl(rawPath, baseUrl, sourceUrl),
+      method: String(resource.method ?? 'GET').toUpperCase(),
     })
   }
 
@@ -669,6 +684,10 @@ function findingList(documentResult, challengeResults, preflightResults, entries
   for (const result of preflightResults) {
     const challengeResult = challengesByEntry.get(entryKey(result))
     if (!challengeResult || !hasPaymentChallenge(challengeResult)) continue
+    const allowedOrigin = result.headers['access-control-allow-origin'] ?? ''
+    if (!allowedOrigin) {
+      findings.push(`P1 - ${result.name} CORS preflight does not allow the requesting origin; observed allow-origin: none.`)
+    }
     const allowed = result.headers['access-control-allow-headers'] ?? ''
     if (allowed !== '*' && !/x-payment/i.test(allowed)) {
       const observed = result.status >= 400
