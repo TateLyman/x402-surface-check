@@ -18,9 +18,9 @@ npx --yes x402-surface-check --strict-proof https://api.example.com/openapi.json
 
 ## What It Checks
 
-- Manifest endpoint discovery from `items[]`, `endpoints[]`, object-valued `endpoints`, `resources[]`, `x402Endpoints`, category arrays, raw resource URL strings, method-prefixed resource strings, and OpenAPI paths
+- Manifest endpoint discovery from `items[]`, `endpoints[]`, object-valued `endpoints`, string-valued endpoint maps, `tools` maps, `resources[]`, `x402Endpoints`, category arrays, raw resource URL strings, method-prefixed resource strings, and OpenAPI paths
 - Object-valued manifest endpoint query examples, public catalog/discovery GETs, and payment-bearing two-phase operations without treating expected public catalog reads as failed payment gates
-- Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
+- Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, string `discovery` links, nested `discovery.x402_json` / OpenAPI links, or manifest-level OpenAPI links
 - OpenAPI `servers[]` base-path preservation, so `/paths` are probed through the documented gateway rather than the domain root
 - OpenAPI query/path examples, JSON request-body examples, nested request schemas, local `$ref` request schemas, and explicit direct-endpoint bodies for safer no-payment probes
 - OpenAPI paid-operation prioritization, so docs and discovery routes do not consume the probe limit before payment-bearing operations

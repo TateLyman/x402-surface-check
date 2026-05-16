@@ -178,10 +178,22 @@ function openApiServerBaseUrl(document, sourceUrl) {
 }
 
 function linkedDiscoveryUrl(document, sourceUrl) {
+  const discovery = document?.discovery && typeof document.discovery === 'object'
+    ? document.discovery
+    : {}
   const rawUrl = document?.discovery_url
     ?? document?.discoveryUrl
     ?? document?.resources_url
     ?? document?.resourcesUrl
+    ?? (typeof document?.discovery === 'string' ? document.discovery : undefined)
+    ?? discovery.x402_json
+    ?? discovery.x402Json
+    ?? discovery.resources_json
+    ?? discovery.resourcesJson
+    ?? discovery.resources
+    ?? discovery.openapi
+    ?? discovery.openapi_url
+    ?? discovery.openapiUrl
     ?? (/^(https?:\/\/|\/)/i.test(String(document?.openapi ?? '')) ? document.openapi : '')
   if (typeof rawUrl !== 'string' || !rawUrl.trim()) return ''
   return endpointUrl(rawUrl, documentBaseUrl(document, sourceUrl), sourceUrl)
@@ -331,6 +343,7 @@ function manifestEndpointPaymentSignal(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return 0
   if (Number(endpoint.phase1_response?.status) === 402) return 2
   if (/payment-required|x-payment|402/i.test(String(endpoint.phase1_response?.header ?? ''))) return 2
+  if (/^\$?\d+(\.\d+)?/.test(String(endpoint.price ?? endpoint.cost ?? endpoint.amount ?? ''))) return 1
   if (/payment|required|402/i.test(String(endpoint.description ?? ''))) return 1
   if (endpoint.accepts || endpoint.schemes || endpoint.payment || endpoint['x-payment-info']) return 1
   return 0
@@ -402,10 +415,28 @@ function endpointEntries(document, sourceUrl, limit) {
       })
     }
   }
-  else if (document.endpoints && typeof document.endpoints === 'object') {
-    for (const [key, endpoint] of Object.entries(document.endpoints)) {
+  const endpointMaps = []
+  if (!Array.isArray(document.endpoints) && document.endpoints && typeof document.endpoints === 'object') {
+    endpointMaps.push(document.endpoints)
+  }
+  if (document.tools && typeof document.tools === 'object') {
+    endpointMaps.push(document.tools)
+  }
+  for (const endpointMap of endpointMaps) {
+    for (const [key, endpoint] of Object.entries(endpointMap)) {
+      if (typeof endpoint === 'string') {
+        const methodMatch = key.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)/i)
+        const rawPath = methodMatch?.[2] ?? key
+        entries.push({
+          name: String(rawPath).split('/').filter(Boolean).at(-1) ?? key,
+          url: endpointUrl(rawPath, baseUrl, sourceUrl),
+          method: String(methodMatch?.[1] ?? 'GET').toUpperCase(),
+        })
+        continue
+      }
       if (!endpoint || typeof endpoint !== 'object') continue
-      const rawPath = endpoint.url ?? endpoint.endpoint ?? endpoint.path
+      const keyPath = key.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)/i)?.[2] ?? key
+      const rawPath = endpoint.url ?? endpoint.endpoint ?? endpoint.path ?? keyPath
       if (!rawPath) continue
       const method = String(endpoint.method ?? 'POST').toUpperCase()
       const paymentSignal = manifestEndpointPaymentSignal(endpoint)

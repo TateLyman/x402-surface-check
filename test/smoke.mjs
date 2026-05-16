@@ -302,6 +302,37 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/nested-discovery.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'Nested Discovery Fixture',
+      discovery: {
+        x402_json: '/items.json',
+        openapi: '/unused-openapi.json',
+      },
+    }))
+    return
+  }
+
+  if (request.url === '/string-endpoints.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'String Endpoint Fixture',
+      endpoints: {
+        '/string-paid': '$0.04 USDC -- string-valued endpoint metadata',
+        'POST /string-post': '$0.08 USDC -- method-prefixed endpoint metadata',
+      },
+      tools: {
+        '/tool-paid': {
+          method: 'GET',
+          price: '$0.02',
+          description: 'Tool map endpoint metadata',
+        },
+      },
+    }))
+    return
+  }
+
   if (request.url === '/resources.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -319,6 +350,25 @@ const server = createServer((request, response) => {
           payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
         }],
       }, `${serverUrl}/api/raw-resource`],
+    }))
+    return
+  }
+
+  if (request.url === '/string-paid' || request.url === '/string-post' || request.url === '/tool-paid') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 1,
+      error: 'Payment required',
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        maxAmountRequired: request.url === '/string-post' ? '80000' : request.url === '/tool-paid' ? '20000' : '40000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}${request.url}`,
+      }],
     }))
     return
   }
@@ -1114,6 +1164,32 @@ try {
   assert.match(linkedDiscovery.stdout, new RegExp(`Source: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/well-known\\.json`))
   assert.match(linkedDiscovery.stdout, new RegExp(`Document: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/items\\.json`))
   assert.match(linkedDiscovery.stdout, /Premium routing recommendations/)
+
+  const nestedDiscovery = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/nested-discovery.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(nestedDiscovery.stdout, new RegExp(`Source: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/nested-discovery\\.json`))
+  assert.match(nestedDiscovery.stdout, new RegExp(`Document: ${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\/items\\.json`))
+  assert.match(nestedDiscovery.stdout, /Premium routing recommendations/)
+
+  const stringEndpoints = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/string-endpoints.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(stringEndpoints.stdout, /string-paid/)
+  assert.match(stringEndpoints.stdout, /string-post/)
+  assert.match(stringEndpoints.stdout, /tool-paid/)
+  assert.match(stringEndpoints.stdout, /Probed endpoints: 3/)
+  assert.match(stringEndpoints.stdout, /\$0\.02/)
+  assert.match(stringEndpoints.stdout, /\$0\.04/)
+  assert.match(stringEndpoints.stdout, /\$0\.08/)
 
   const linkedOpenApi = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
