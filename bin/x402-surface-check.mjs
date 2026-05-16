@@ -867,6 +867,29 @@ function groupedFindingSummary(findings) {
     .map(([label, count]) => `- ${count} endpoints: ${label}`)
 }
 
+function referenceGuides(findings) {
+  const guides = []
+  const add = (label, url) => {
+    if (!guides.some(guide => guide.url === url)) guides.push({ label, url })
+  }
+  const text = findings.join('\n')
+  if (/CORS|402 challenge response does not allow the requesting origin|X-PAYMENT/i.test(text)) {
+    add('x402 CORS Fix', 'https://tateprograms.com/x402-cors-fix.html')
+    add('Cloudflare x402 Worker Starter', 'https://tateprograms.com/cloudflare-x402-worker.html')
+  }
+  if (/cacheable|Cache-Control|cache policy|shared caches/i.test(text)) {
+    add('Cloudflare x402 Worker Starter', 'https://tateprograms.com/cloudflare-x402-worker.html')
+    add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
+  }
+  if (/validation HTTP \d+ before a payment challenge|auth HTTP \d+ before a payment challenge|replay|idempotency/i.test(text)) {
+    add('x402 Launch Checklist', 'https://tateprograms.com/x402-launch-checklist.html')
+  }
+  if (/resource URL|resource echo|accepts\[0\]\.extra\.resource/i.test(text)) {
+    add('x402 Surface Check notes', 'https://tateprograms.com/x402-surface-check.html')
+  }
+  return guides.map(guide => `- ${guide.label}: ${guide.url}`)
+}
+
 function formatMarkdown(report) {
   const document = report.document.body.json ?? {}
   const challengeRows = report.challenges.map(result => {
@@ -880,6 +903,7 @@ function formatMarkdown(report) {
     return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${cachePolicy(result.headers) || '-'} |`
   })
   const findingSummary = groupedFindingSummary(report.findings)
+  const guides = referenceGuides(report.findings)
 
   return [
     '# x402 Public Surface Check',
@@ -929,6 +953,12 @@ function formatMarkdown(report) {
     '',
     ...(report.findings.length ? report.findings.map(item => `- ${item}`) : ['- No obvious launch-readiness findings from the public no-payment probes.']),
     '',
+    ...(guides.length ? [
+      '## Reference Guides',
+      '',
+      ...guides,
+      '',
+    ] : []),
   ].join('\n')
 }
 

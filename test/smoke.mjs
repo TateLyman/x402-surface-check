@@ -999,6 +999,8 @@ try {
   assert.match(cacheable.stdout, /Cache Policy Map/)
   assert.match(cacheable.stdout, /public, max-age=300/)
   assert.match(cacheable.stdout, /payment challenge response is explicitly cacheable/)
+  assert.match(cacheable.stdout, /Cloudflare x402 Worker Starter/)
+  assert.match(cacheable.stdout, /x402 Attack Map 2026/)
 
   const noOrigin = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
@@ -1012,6 +1014,8 @@ try {
 
   assert.match(noOrigin.stdout, /CORS preflight does not allow the requesting origin/)
   assert.match(noOrigin.stdout, /402 challenge response does not allow the requesting origin/)
+  assert.match(noOrigin.stdout, /x402 CORS Fix/)
+  assert.match(noOrigin.stdout, /Cloudflare x402 Worker Starter/)
 
   const groupedNoOrigin = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
