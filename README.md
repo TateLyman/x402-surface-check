@@ -37,6 +37,7 @@ npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
 - Cache-Control posture on no-payment challenge responses, with P1 warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
 - Payment-enforcement headers on `200` responses, so public telemetry/free-trial endpoints do not accidentally advertise enforced x402 while returning content before a challenge
+- Credential-like query params and URL userinfo inside public registry/discovery endpoint URLs, reported with redacted values so provider API keys and tokens are not repeated in scan output
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
 - Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and the May 2026 x402 attack-control map
 - Over-broad public method surfaces

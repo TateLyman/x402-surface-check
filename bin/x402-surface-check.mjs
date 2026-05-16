@@ -811,6 +811,55 @@ function looksLikeLocalResourceUrl(value) {
   }
 }
 
+const secretQueryParamPattern =
+  /^(?:access[_-]?token|api[_-]?key|auth|authorization|bearer|client[_-]?secret|code|key|password|private[_-]?key|secret|session|sig|signature|token|jwt)$/i
+
+function redactedCredentialUrl(value) {
+  if (!/^https?:\/\//i.test(String(value ?? ''))) return null
+  try {
+    const url = new URL(value)
+    let changed = false
+
+    if (url.username || url.password) {
+      if (url.username) url.username = 'REDACTED'
+      if (url.password) url.password = 'REDACTED'
+      changed = true
+    }
+
+    for (const [name] of Array.from(url.searchParams.entries())) {
+      if (secretQueryParamPattern.test(name)) {
+        url.searchParams.set(name, 'REDACTED')
+        changed = true
+      }
+    }
+
+    return changed ? url.toString() : null
+  }
+  catch {
+    return null
+  }
+}
+
+function publicUrlCredentialFindings(value, path = 'document', depth = 0) {
+  if (depth > 8 || value === null || value === undefined) return []
+  if (typeof value === 'string') {
+    const redacted = redactedCredentialUrl(value)
+    return redacted
+      ? [`P2 - Public document exposes credential-like URL material at ${path}: ${redacted}. Move provider tokens, signatures, sessions, or API keys out of registry-visible endpoint URLs.`]
+      : []
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => publicUrlCredentialFindings(item, `${path}[${index}]`, depth + 1))
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, item]) => {
+      const safeKey = /^[a-zA-Z_$][\w$-]*$/.test(key) ? `.${key}` : `[${JSON.stringify(key)}]`
+      return publicUrlCredentialFindings(item, `${path}${safeKey}`, depth + 1)
+    })
+  }
+  return []
+}
+
 function cachePolicy(headers = {}) {
   return headers['cache-control'] ?? headers.cacheControl ?? ''
 }
@@ -862,6 +911,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
 
   if (!documentResult.body.json) {
     findings.push(`P1 - Document did not return parseable JSON; content begins: ${documentResult.body.text.slice(0, 80).replace(/\s+/g, ' ')}.`)
+  }
+  else {
+    findings.push(...publicUrlCredentialFindings(document))
   }
 
   if (entries.length === 0) {
@@ -1058,6 +1110,10 @@ function referenceGuides(findings) {
   if (/resource URL|resource echo|resource binding|accept leg|accepts\[0\]\.extra\.resource/i.test(text)) {
     add('x402 Surface Check notes', 'https://tateprograms.com/x402-surface-check.html')
     add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
+  }
+  if (/credential-like URL material|provider tokens|API keys|registry-visible endpoint URLs/i.test(text)) {
+    add('x402 Metadata Filter', 'https://tateprograms.com/x402-metadata-filter.html')
+    add('Agent Commerce Gate', 'https://tateprograms.com/agent-commerce-gate.html')
   }
   return guides.map(guide => `- ${guide.label}: ${guide.url}`)
 }

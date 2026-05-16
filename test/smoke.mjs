@@ -323,6 +323,23 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/registry-leak.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'Agent Marketplace Fixture',
+      services: [{
+        id: 'svc_token_query',
+        name: 'Tokenized endpoint',
+        endpoint: `${serverUrl}/api/provider?token=abc123abc123abc123abc123&surface=demo`,
+      }, {
+        id: 'svc_userinfo',
+        name: 'Userinfo endpoint',
+        endpoint: 'https://user:pass@example.com/api/provider',
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/object-endpoints.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -1032,6 +1049,17 @@ try {
   assert.match(resourceManifest.stdout, /\$0\.03/)
   assert.match(resourceManifest.stdout, /eip155:8453/)
   assert.doesNotMatch(resourceManifest.stdout, /Document does not expose/)
+
+  const registryLeak = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/registry-leak.json`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(registryLeak.stdout, /credential-like URL material/)
+  assert.match(registryLeak.stdout, /token=REDACTED&surface=demo/)
+  assert.match(registryLeak.stdout, /https:\/\/REDACTED:REDACTED@example\.com\/api\/provider/)
+  assert.doesNotMatch(registryLeak.stdout, /abc123abc123abc123abc123/)
+  assert.doesNotMatch(registryLeak.stdout, /user:pass@example/)
 
   const objectEndpoints = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
