@@ -13,6 +13,7 @@ npx --yes x402-surface-check https://api.example.com/openapi.json report.md
 npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/eth
 npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price CPI"}' https://api.example.com/paid-post
 npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
+npx --yes x402-surface-check --strict-proof https://api.example.com/openapi.json
 ```
 
 ## What It Checks
@@ -36,6 +37,7 @@ npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 - Timeout/expiry metadata on challenges, so payment capabilities have an explicit bounded freshness window
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
 - Cache-Control posture on no-payment challenge responses, with P1 warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
+- Optional strict proof/idempotency posture: mutating paid routes that do not advertise payment-identifier idempotency, and payment challenges that do not advertise signed offer/receipt evidence
 - Payment-enforcement headers on `200` responses, so public telemetry/free-trial endpoints do not accidentally advertise enforced x402 while returning content before a challenge
 - Credential-like query params and URL userinfo inside public registry/discovery endpoint URLs, reported with redacted values so provider API keys and tokens are not repeated in scan output
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
@@ -75,6 +77,7 @@ x402-surface-check --endpoint --method POST <paid-endpoint-url> [output.md]
 --origin <url>   Origin to use for browser-style CORS preflight
 --limit <n>      Maximum endpoints to probe, default 6
 --strict-cache   Flag missing Cache-Control on no-payment 402 responses
+--strict-proof   Flag missing idempotency and signed offer/receipt extensions
 --json           Print JSON instead of Markdown
 --help           Show usage
 --version        Show package version
@@ -86,6 +89,7 @@ Environment variables are also supported:
 X402_CHECK_ORIGIN=https://example.com x402-surface-check https://api.example.com/openapi.json
 X402_CHECK_LIMIT=12 x402-surface-check https://api.example.com/.well-known/x402
 X402_STRICT_CACHE=1 x402-surface-check https://api.example.com/.well-known/x402
+X402_STRICT_PROOF=1 x402-surface-check https://api.example.com/.well-known/x402
 ```
 
 ## Scope

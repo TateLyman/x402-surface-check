@@ -614,6 +614,31 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/proofed-order') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}/proofed-order` },
+      extensions: {
+        'payment-identifier': { required: false },
+        'offer-receipt': { format: 'jws', includeTxHash: false },
+      },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}/proofed-order`,
+        maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/ref-paid') {
     let body = ''
     request.on('data', chunk => {
@@ -1236,6 +1261,35 @@ try {
   assert.match(bodyRequired.stdout, /body-required/)
   assert.match(bodyRequired.stdout, /\$0\.007/)
   assert.doesNotMatch(bodyRequired.stdout, /validation HTTP 400/)
+
+  const strictProof = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    '--body',
+    '{"email":"agent@example.com","items":[]}',
+    `${serverUrl}/orders`,
+    '--strict-proof',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(strictProof.stdout, /payment-identifier idempotency/)
+  assert.match(strictProof.stdout, /signed offer\/receipt metadata/)
+  assert.match(strictProof.stdout, /x402 Payment-Identifier/)
+  assert.match(strictProof.stdout, /x402 Signed Offers & Receipts/)
+
+  const proofedOrder = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    `${serverUrl}/proofed-order`,
+    '--strict-proof',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(proofedOrder.stdout, /proofed-order/)
+  assert.doesNotMatch(proofedOrder.stdout, /payment-identifier idempotency/)
+  assert.doesNotMatch(proofedOrder.stdout, /signed offer\/receipt metadata/)
 
   const freeTrial = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

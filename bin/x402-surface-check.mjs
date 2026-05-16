@@ -23,6 +23,7 @@ Options:
   --origin <url>   Origin to use for browser-style CORS preflight
   --limit <n>      Maximum endpoints to probe, default ${defaultLimit}
   --strict-cache   Flag missing Cache-Control on no-payment 402 responses
+  --strict-proof   Flag missing idempotency and signed offer/receipt extensions
   --json           Print JSON instead of Markdown
   --help           Show this help
   --version        Show package version
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     bodyFile: process.env.X402_CHECK_BODY_FILE,
     outputPath: '',
     strictCache: process.env.X402_STRICT_CACHE === '1',
+    strictProof: process.env.X402_STRICT_PROOF === '1',
     url: '',
   }
 
@@ -59,6 +61,9 @@ function parseArgs(argv) {
     }
     else if (arg === '--strict-cache') {
       args.strictCache = true
+    }
+    else if (arg === '--strict-proof') {
+      args.strictProof = true
     }
     else if (arg === '--method') {
       args.method = String(argv[index + 1] ?? '').toUpperCase()
@@ -685,6 +690,23 @@ function challengeAccepts(result) {
   return []
 }
 
+function extensionKeys(container) {
+  const extensions = container?.extensions
+  if (!extensions || typeof extensions !== 'object' || Array.isArray(extensions)) return []
+  return Object.keys(extensions)
+}
+
+function challengeExtensionKeys(result) {
+  return new Set([
+    ...extensionKeys(result.body.json),
+    ...challengeAccepts(result).flatMap(accept => extensionKeys(accept)),
+  ].map(key => key.toLowerCase()))
+}
+
+function hasChallengeExtension(result, pattern) {
+  return [...challengeExtensionKeys(result)].some(key => pattern.test(key))
+}
+
 function acceptAmountValue(accept) {
   return accept.maxAmountRequired ?? accept.maxAmount ?? accept.amount ?? ''
 }
@@ -898,6 +920,10 @@ function looksLikeOperationalHealthEndpoint(result) {
   return /(^|[/_\s-])(health|healthz|ready|readiness|live|liveness|status)([/_\s-]|$)/.test(value)
 }
 
+function isMutatingMethod(method) {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(method ?? 'POST').toUpperCase())
+}
+
 function findingList(documentResult, challengeResults, preflightResults, entries, options = {}) {
   const document = documentResult.body.json ?? {}
   const findings = []
@@ -1005,6 +1031,15 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     else if (options.strictCache && !cachePolicy(result.headers)) {
       findings.push(`P3 - ${result.name} payment challenge response did not expose Cache-Control; for payment-gated routes, document or send no-store/private cache policy and confirm paid 200 responses are never shared-cacheable.`)
     }
+
+    if (options.strictProof) {
+      if (isMutatingMethod(result.method) && !hasChallengeExtension(result, /payment[-_]?identifier|idempotenc/)) {
+        findings.push(`P2 - ${result.name} is a mutating paid route but does not advertise payment-identifier idempotency; retries after network or client failures can duplicate charges or lose paid responses without a shared payment ID.`)
+      }
+      if (!hasChallengeExtension(result, /offer[-_]?receipt|signed[-_]?(offer|receipt)/)) {
+        findings.push(`P3 - ${result.name} challenge does not advertise signed offer/receipt metadata; clients have weaker proof of committed terms and service delivery for audits or disputes.`)
+      }
+    }
   }
 
   for (const result of preflightResults) {
@@ -1072,6 +1107,12 @@ function groupedFindingLabel(finding) {
   if (/payment challenge response is explicitly cacheable/.test(finding)) {
     return 'P1 - Payment challenge responses are explicitly cacheable.'
   }
+  if (/does not advertise payment-identifier idempotency/.test(finding)) {
+    return 'P2 - Mutating paid routes do not advertise payment-identifier idempotency.'
+  }
+  if (/does not advertise signed offer\/receipt metadata/.test(finding)) {
+    return 'P3 - Payment challenges do not advertise signed offer/receipt metadata.'
+  }
   if (/content while payment headers advertise enforcement/.test(finding)) {
     return 'P2 - Payment headers advertise enforcement on a 200 response.'
   }
@@ -1109,6 +1150,11 @@ function referenceGuides(findings) {
   }
   if (/resource URL|resource echo|resource binding|accept leg|accepts\[0\]\.extra\.resource/i.test(text)) {
     add('x402 Surface Check notes', 'https://tateprograms.com/x402-surface-check.html')
+    add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
+  }
+  if (/payment-identifier|idempotency|signed offer|signed offer\/receipt|service delivery|audits|disputes/i.test(text)) {
+    add('x402 Payment-Identifier', 'https://docs.x402.org/extensions/payment-identifier')
+    add('x402 Signed Offers & Receipts', 'https://docs.x402.org/extensions/offer-receipt')
     add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
   }
   if (/credential-like URL material|provider tokens|API keys|registry-visible endpoint URLs/i.test(text)) {
@@ -1243,6 +1289,7 @@ async function runCheck(options) {
   }
   report.findings = findingList(document, challenges, preflights, entries, {
     strictCache: options.strictCache,
+    strictProof: options.strictProof,
   })
   return report
 }
