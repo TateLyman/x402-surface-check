@@ -33,6 +33,7 @@ npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 - HTTPS resource URLs and stable resource metadata
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
 - Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
+- Payment-enforcement headers on `200` responses, so public telemetry/free-trial endpoints do not accidentally advertise enforced x402 while returning content before a challenge
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
 - Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and the May 2026 x402 attack-control map
 - Over-broad public method surfaces
@@ -51,6 +52,7 @@ Recent public no-payment checks have found and verified real launch fixes:
 - HYRE Agent: OpenAPI-declared prices found 10x below live 402 challenge prices. https://github.com/solana-foundation/pay-skills/pull/19#issuecomment-4455641258
 - anchor-x402: multi-rail x402 challenges verified, with browser preflight blockers isolated before merge. https://github.com/solana-foundation/pay-skills/pull/47#issuecomment-4455678163
 - Agent Trust Bench: three no-payment passes converged on zero findings after discovery, browser preflight, cache, and resource-echo fixes. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4467597309
+- SolSentry: x402 stats endpoint flagged for returning `200` content while headers advertised payment enforcement and browser preflight omitted `X-PAYMENT`. https://github.com/solsentry/solsentry-app/issues/2
 - Solrouter: private LLM inference route verified with HTTPS resource-binding and price-alignment notes. https://github.com/solana-foundation/pay-skills/pull/39#issuecomment-4455800060
 - Tetrac: Solana market-data payment gates verified, with browser payment-header preflight blocker isolated. https://github.com/solana-foundation/pay-skills/pull/32#issuecomment-4455923744
 

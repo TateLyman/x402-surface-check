@@ -14,6 +14,15 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.method === 'OPTIONS' && request.url === '/header-enforced-free') {
+    response.statusCode = 204
+    response.setHeader('access-control-allow-origin', '*')
+    response.setHeader('access-control-allow-headers', 'Content-Type, Authorization, X-Client-ID')
+    response.setHeader('access-control-allow-methods', 'GET, OPTIONS')
+    response.end()
+    return
+  }
+
   if (request.method === 'OPTIONS') {
     response.statusCode = 204
     response.setHeader('access-control-allow-origin', '*')
@@ -780,6 +789,18 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/header-enforced-free') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.setHeader('x-payment-required', 'true')
+    response.setHeader('x-payment-enforce', 'true')
+    response.setHeader('x-price-usdc', '0.001')
+    response.setHeader('x-payment-protocol', 'x402')
+    response.end(JSON.stringify({ ok: true, billed: false }))
+    return
+  }
+
   response.statusCode = 404
   response.end('not found')
 })
@@ -1082,6 +1103,20 @@ try {
   assert.doesNotMatch(freeTrial.stdout, /challenge is missing amount/)
   assert.doesNotMatch(freeTrial.stdout, /\$0\.000/)
   assert.doesNotMatch(freeTrial.stdout, /\| free-trial \| GET \| 200 \| x402 \|/)
+
+  const headerEnforcedFree = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    '--origin',
+    serverUrl,
+    `${serverUrl}/header-enforced-free`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(headerEnforcedFree.stdout, /returned 200 without a payment challenge/)
+  assert.match(headerEnforcedFree.stdout, /content while payment headers advertise enforcement/)
+  assert.match(headerEnforcedFree.stdout, /CORS preflight does not allow X-PAYMENT/)
 }
 finally {
   await new Promise(resolve => server.close(resolve))

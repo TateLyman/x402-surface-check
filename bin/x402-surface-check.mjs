@@ -710,6 +710,24 @@ function cachePolicy(headers = {}) {
   return headers['cache-control'] ?? headers.cacheControl ?? ''
 }
 
+function paymentSignalHeaders(headers = {}) {
+  return [
+    'x-payment-required',
+    'x-payment-enforce',
+    'x-price-usdc',
+    'x-payment-address',
+    'x-payment-network',
+    'x-payment-token',
+    'x-payment-protocol',
+  ].filter(name => headers[name] !== undefined && headers[name] !== '')
+}
+
+function advertisesPaymentEnforcement(headers = {}) {
+  const required = String(headers['x-payment-required'] ?? '').toLowerCase() === 'true'
+  const enforced = String(headers['x-payment-enforce'] ?? '').toLowerCase() === 'true'
+  return required || enforced || (required && paymentSignalHeaders(headers).length > 1)
+}
+
 function looksExplicitlyCacheable(headers = {}) {
   const policy = cachePolicy(headers)
   if (!policy) return false
@@ -754,6 +772,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
       if (result.status >= 200 && result.status < 300) {
         if (!looksLikeOperationalHealthEndpoint(result)) {
           findings.push(`P3 - ${result.name} returned ${result.status} without a payment challenge for a no-payment ${result.method ?? 'POST'} probe; document this as free/trial access or move the 402 challenge before content.`)
+        }
+        if (advertisesPaymentEnforcement(result.headers)) {
+          findings.push(`P2 - ${result.name} returned ${result.status} content while payment headers advertise enforcement (${paymentSignalHeaders(result.headers).join(', ')}); either return a 402 before content or document this endpoint as public telemetry.`)
         }
       }
       else if (result.status === 400 || result.status === 422) {
@@ -807,7 +828,7 @@ function findingList(documentResult, challengeResults, preflightResults, entries
 
   for (const result of preflightResults) {
     const challengeResult = challengesByEntry.get(entryKey(result))
-    if (!challengeResult || !hasPaymentChallenge(challengeResult)) continue
+    if (!challengeResult || (!hasPaymentChallenge(challengeResult) && !advertisesPaymentEnforcement(challengeResult.headers))) continue
     const allowedOrigin = result.headers['access-control-allow-origin'] ?? ''
     if (!allowedOrigin) {
       findings.push(`P1 - ${result.name} CORS preflight does not allow the requesting origin; observed allow-origin: none.`)
@@ -863,6 +884,9 @@ function groupedFindingLabel(finding) {
   }
   if (/payment challenge response did not expose Cache-Control/.test(finding)) {
     return 'P3 - Payment challenge responses do not expose Cache-Control in strict cache mode.'
+  }
+  if (/content while payment headers advertise enforcement/.test(finding)) {
+    return 'P2 - Payment headers advertise enforcement on a 200 response.'
   }
   return null
 }
