@@ -22,6 +22,7 @@ Options:
   --body-file <p>  Read JSON request body for direct endpoint mode from a file
   --origin <url>   Origin to use for browser-style CORS preflight
   --limit <n>      Maximum endpoints to probe, default ${defaultLimit}
+  --strict-cache   Flag missing Cache-Control on no-payment 402 responses
   --json           Print JSON instead of Markdown
   --help           Show this help
   --version        Show package version
@@ -38,6 +39,7 @@ function parseArgs(argv) {
     body: process.env.X402_CHECK_BODY,
     bodyFile: process.env.X402_CHECK_BODY_FILE,
     outputPath: '',
+    strictCache: process.env.X402_STRICT_CACHE === '1',
     url: '',
   }
 
@@ -54,6 +56,9 @@ function parseArgs(argv) {
     }
     else if (arg === '--endpoint') {
       args.endpoint = true
+    }
+    else if (arg === '--strict-cache') {
+      args.strictCache = true
     }
     else if (arg === '--method') {
       args.method = String(argv[index + 1] ?? '').toUpperCase()
@@ -721,7 +726,7 @@ function looksLikeOperationalHealthEndpoint(result) {
   return /(^|[/_\s-])(health|healthz|ready|readiness|live|liveness|status)([/_\s-]|$)/.test(value)
 }
 
-function findingList(documentResult, challengeResults, preflightResults, entries) {
+function findingList(documentResult, challengeResults, preflightResults, entries, options = {}) {
   const document = documentResult.body.json ?? {}
   const findings = []
   const networks = valueList(document.networks)
@@ -795,6 +800,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     if (looksExplicitlyCacheable(result.headers)) {
       findings.push(`P2 - ${result.name} payment challenge response is explicitly cacheable (${cachePolicy(result.headers)}); paid routes should use no-store/private cache policy or bypass shared caches.`)
     }
+    else if (options.strictCache && !cachePolicy(result.headers)) {
+      findings.push(`P3 - ${result.name} payment challenge response did not expose Cache-Control; for payment-gated routes, document or send no-store/private cache policy and confirm paid 200 responses are never shared-cacheable.`)
+    }
   }
 
   for (const result of preflightResults) {
@@ -852,6 +860,9 @@ function groupedFindingLabel(finding) {
   }
   if (/challenge advertises placeholder-looking payTo/.test(finding)) {
     return 'P1 - Challenges advertise placeholder-looking payTo recipients.'
+  }
+  if (/payment challenge response did not expose Cache-Control/.test(finding)) {
+    return 'P3 - Payment challenge responses do not expose Cache-Control in strict cache mode.'
   }
   return null
 }
@@ -1013,7 +1024,9 @@ async function runCheck(options) {
     preflights,
     sourceDocument,
   }
-  report.findings = findingList(document, challenges, preflights, entries)
+  report.findings = findingList(document, challenges, preflights, entries, {
+    strictCache: options.strictCache,
+  })
   return report
 }
 

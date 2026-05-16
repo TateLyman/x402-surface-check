@@ -11,6 +11,7 @@ npx --yes x402-surface-check https://api.example.com/.well-known/x402
 npx --yes x402-surface-check https://api.example.com/openapi.json report.md
 npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/eth
 npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price CPI"}' https://api.example.com/paid-post
+npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 ```
 
 ## What It Checks
@@ -30,7 +31,7 @@ npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price C
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
-- Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates
+- Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
 - Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and launch controls
 - Over-broad public method surfaces
@@ -66,6 +67,7 @@ x402-surface-check --endpoint --method POST <paid-endpoint-url> [output.md]
 --body-file <p>  Read JSON request body for direct endpoint mode from a file
 --origin <url>   Origin to use for browser-style CORS preflight
 --limit <n>      Maximum endpoints to probe, default 6
+--strict-cache   Flag missing Cache-Control on no-payment 402 responses
 --json           Print JSON instead of Markdown
 --help           Show usage
 --version        Show package version
@@ -76,6 +78,7 @@ Environment variables are also supported:
 ```bash
 X402_CHECK_ORIGIN=https://example.com x402-surface-check https://api.example.com/openapi.json
 X402_CHECK_LIMIT=12 x402-surface-check https://api.example.com/.well-known/x402
+X402_STRICT_CACHE=1 x402-surface-check https://api.example.com/.well-known/x402
 ```
 
 ## Scope

@@ -974,6 +974,20 @@ try {
   assert.match(legacy.stdout, /\$10\.00/)
   assert.doesNotMatch(legacy.stdout, /\$0\.00001/)
   assert.doesNotMatch(legacy.stdout, /challenge is missing amount/)
+  assert.doesNotMatch(legacy.stdout, /did not expose Cache-Control/)
+
+  const strictCache = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    `${serverUrl}/legacy/v1`,
+    '--strict-cache',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(strictCache.stdout, /payment challenge response did not expose Cache-Control/)
+  assert.match(strictCache.stdout, /Cloudflare x402 Worker Starter/)
+  assert.match(strictCache.stdout, /x402 Attack Map 2026/)
 
   const schemes = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
