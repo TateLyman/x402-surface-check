@@ -343,7 +343,7 @@ function manifestEndpointPaymentSignal(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return 0
   if (Number(endpoint.phase1_response?.status) === 402) return 2
   if (/payment-required|x-payment|402/i.test(String(endpoint.phase1_response?.header ?? ''))) return 2
-  if (/^\$?\d+(\.\d+)?/.test(String(endpoint.price ?? endpoint.cost ?? endpoint.amount ?? ''))) return 1
+  if (/^\$?\d+(\.\d+)?/.test(String(endpoint.price ?? endpoint.priceUsd ?? endpoint.price_usd ?? endpoint.cost ?? endpoint.amount ?? ''))) return 1
   if (/payment|required|402/i.test(String(endpoint.description ?? ''))) return 1
   if (endpoint.accepts || endpoint.schemes || endpoint.payment || endpoint['x-payment-info']) return 1
   return 0
@@ -412,6 +412,27 @@ function endpointEntries(document, sourceUrl, limit) {
         name: endpoint.id ?? endpoint.name ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
         url: endpointUrl(rawPath, baseUrl, sourceUrl),
         method: String(endpoint.method ?? 'POST').toUpperCase(),
+      })
+    }
+  }
+  if (Array.isArray(document.routes)) {
+    for (const route of document.routes) {
+      if (!route || typeof route !== 'object') continue
+      const exampleCall = Array.isArray(route.exampleCalls)
+        ? route.exampleCalls.find(call => call?.url)
+        : undefined
+      const rawPath = exampleCall?.url ?? route.url ?? route.endpoint ?? route.path
+      if (!rawPath) continue
+      const method = String(route.method ?? exampleCall?.method ?? 'GET').toUpperCase()
+      const paymentSignal = manifestEndpointPaymentSignal(route)
+      const hasPathParameters = /\{[^}]+\}/.test(String(rawPath))
+      if (paymentSignal === 0 && (method !== 'GET' || hasPathParameters)) continue
+      entries.push({
+        name: route.id ?? route.reportType ?? route.agentName ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
+        url: manifestEndpointUrl(rawPath, route, baseUrl, sourceUrl),
+        method,
+        requestBody: manifestEndpointBody(route, document),
+        publicDiscovery: paymentSignal === 0,
       })
     }
   }

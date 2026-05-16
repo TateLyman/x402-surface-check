@@ -347,6 +347,33 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/route-catalog.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      object: 'route_catalog',
+      service: 'Route Catalog Fixture',
+      accepts: [{ scheme: 'exact', network: 'eip155:8453' }],
+      routes: [
+        {
+          path: '/route-paid',
+          reportType: 'route_paid',
+          priceUsd: '$0.03',
+          exampleCalls: [{ method: 'GET', url: '/route-paid?category=coffee' }],
+        },
+        {
+          path: '/route-post',
+          agentName: 'Route Post',
+          priceUsd: '$0.07',
+          method: 'POST',
+          requestBody: {
+            example: { id: 'safe-route-fixture' },
+          },
+        },
+      ],
+    }))
+    return
+  }
+
   if (request.url === '/resources.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -532,6 +559,46 @@ const server = createServer((request, response) => {
         payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
         resource: `${serverUrl}/api/premium/routing`,
         maxTimeoutSeconds: 60,
+      }],
+    }))
+    return
+  }
+
+  if (request.url?.startsWith('/route-paid')) {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}${request.url}` },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '30000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}${request.url}`,
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/route-post') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}/route-post` },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '70000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}/route-post`,
       }],
     }))
     return
@@ -1215,6 +1282,19 @@ try {
   assert.match(toolNameArray.stdout, /Probed endpoints: 0/)
   assert.doesNotMatch(toolNameArray.stdout, /\| 0 \|/)
   assert.match(toolNameArray.stdout, /Document does not expose any manifest, OpenAPI, item, category, or resource endpoints/)
+
+  const routeCatalog = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/route-catalog.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(routeCatalog.stdout, /route-paid/)
+  assert.match(routeCatalog.stdout, /route-post/)
+  assert.match(routeCatalog.stdout, /Probed endpoints: 2/)
+  assert.match(routeCatalog.stdout, /\$0\.03/)
+  assert.match(routeCatalog.stdout, /\$0\.07/)
 
   const linkedOpenApi = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
