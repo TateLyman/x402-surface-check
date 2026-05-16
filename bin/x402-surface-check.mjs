@@ -701,6 +701,17 @@ function looksLikePlaceholderPayTo(payTo) {
   return false
 }
 
+function cachePolicy(headers = {}) {
+  return headers['cache-control'] ?? headers.cacheControl ?? ''
+}
+
+function looksExplicitlyCacheable(headers = {}) {
+  const policy = cachePolicy(headers)
+  if (!policy) return false
+  if (/\b(no-store|private|no-cache)\b/i.test(policy)) return false
+  return /\b(public|s-maxage|max-age\s*=)\b/i.test(policy)
+}
+
 function entryKey(entry) {
   return `${entry.method ?? 'POST'} ${entry.url}`
 }
@@ -780,6 +791,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     }
     if (!summary.resourceUrl || !summary.extraResource) {
       findings.push(`P2 - ${result.name} challenge does not repeat the resource URL in both resource.url and accepts[0].extra.resource/resource.`)
+    }
+    if (looksExplicitlyCacheable(result.headers)) {
+      findings.push(`P2 - ${result.name} payment challenge response is explicitly cacheable (${cachePolicy(result.headers)}); paid routes should use no-store/private cache policy or bypass shared caches.`)
     }
   }
 
@@ -862,6 +876,9 @@ function formatMarkdown(report) {
   const preflightRows = report.preflights.map(result => {
     return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${result.headers['access-control-allow-origin'] ?? '-'} | ${result.headers['access-control-allow-headers'] ?? '-'} | ${result.headers['access-control-allow-methods'] ?? '-'} |`
   })
+  const cacheRows = report.challenges.map(result => {
+    return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${cachePolicy(result.headers) || '-'} |`
+  })
   const findingSummary = groupedFindingSummary(report.findings)
 
   return [
@@ -895,6 +912,12 @@ function formatMarkdown(report) {
     '| Endpoint | Method | HTTP | Allow-Origin | Allow-Headers | Allow-Methods |',
     '| --- | --- | --- | --- | --- | --- |',
     ...(preflightRows.length ? preflightRows : ['| - | - | - | - | - | - |']),
+    '',
+    '## Cache Policy Map',
+    '',
+    '| Endpoint | Method | HTTP | Cache-Control |',
+    '| --- | --- | --- | --- |',
+    ...(cacheRows.length ? cacheRows : ['| - | - | - | - |']),
     '',
     ...(findingSummary.length ? [
       '## Finding Summary',

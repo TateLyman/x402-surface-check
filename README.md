@@ -30,6 +30,7 @@ npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price C
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
+- Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned

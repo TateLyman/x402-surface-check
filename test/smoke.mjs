@@ -744,6 +744,28 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/cacheable') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('access-control-allow-origin', '*')
+    response.setHeader('cache-control', 'public, max-age=300')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}/cacheable` },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+        resource: `${serverUrl}/cacheable`,
+        extra: { resource: `${serverUrl}/cacheable` },
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/needs-param') {
     response.statusCode = 400
     response.setHeader('content-type', 'application/json')
@@ -965,6 +987,18 @@ try {
   assert.match(schemes.stdout, /\$0\.05/)
   assert.doesNotMatch(schemes.stdout, /\$0\.000/)
   assert.doesNotMatch(schemes.stdout, /challenge is missing amount/)
+
+  const cacheable = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'GET',
+    `${serverUrl}/cacheable`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(cacheable.stdout, /Cache Policy Map/)
+  assert.match(cacheable.stdout, /public, max-age=300/)
+  assert.match(cacheable.stdout, /payment challenge response is explicitly cacheable/)
 
   const noOrigin = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
