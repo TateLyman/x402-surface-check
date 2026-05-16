@@ -15,7 +15,7 @@ npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price C
 
 ## What It Checks
 
-- Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
+- Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, raw resource URL strings, method-prefixed resource strings, and OpenAPI paths
 - Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
 - OpenAPI `servers[]` base-path preservation, so `/paths` are probed through the documented gateway rather than the domain root
 - OpenAPI query/path examples, JSON request-body examples, nested request schemas, local `$ref` request schemas, and explicit direct-endpoint bodies for safer no-payment probes

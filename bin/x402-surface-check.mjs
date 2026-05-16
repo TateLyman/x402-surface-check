@@ -394,8 +394,8 @@ function endpointEntries(document, sourceUrl, limit) {
   for (const resource of document.resources ?? []) {
     if (typeof resource === 'string') {
       const match = resource.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)/i)
-      if (!match) continue
-      const [, method, rawPath] = match
+      const method = match?.[1] ?? 'GET'
+      const rawPath = match?.[2] ?? resource
       const url = rawPath.startsWith('http')
         ? rawPath
         : new URL(rawPath, document.baseUrl ?? sourceUrl).toString()
