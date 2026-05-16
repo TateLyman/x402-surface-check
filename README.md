@@ -10,6 +10,7 @@ npm: https://www.npmjs.com/package/x402-surface-check
 npx --yes x402-surface-check https://api.example.com/.well-known/x402
 npx --yes x402-surface-check https://api.example.com/openapi.json report.md
 npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/eth
+npx --yes x402-surface-check --endpoint --method POST --body '{"prompt":"price CPI"}' https://api.example.com/paid-post
 ```
 
 ## What It Checks
@@ -17,7 +18,7 @@ npx --yes x402-surface-check --endpoint --method POST https://x402.rpc.ankr.com/
 - Manifest endpoint discovery from `items[]`, `endpoints[]`, `resources[]`, `x402Endpoints`, category arrays, resource strings, and OpenAPI paths
 - Linked discovery documents via `discovery_url`, `discoveryUrl`, `resources_url`, `resourcesUrl`, or manifest-level OpenAPI links
 - OpenAPI `servers[]` base-path preservation, so `/paths` are probed through the documented gateway rather than the domain root
-- OpenAPI query/path examples, JSON request-body examples, and local `$ref` request schemas for safer no-payment probes
+- OpenAPI query/path examples, JSON request-body examples, nested request schemas, local `$ref` request schemas, and explicit direct-endpoint bodies for safer no-payment probes
 - OpenAPI paid-operation prioritization, so docs and discovery routes do not consume the probe limit before payment-bearing operations
 - No-payment HTTP 402 challenge shape
 - x402 v1 and v2 price fields, including `accepts[]` and `schemes[]` challenge arrays
@@ -58,6 +59,8 @@ x402-surface-check --endpoint --method POST <paid-endpoint-url> [output.md]
 
 --endpoint       Treat the URL as one paid endpoint instead of a discovery document
 --method <verb>  HTTP method for direct endpoint mode, default POST
+--body <json>    JSON request body for direct endpoint mode
+--body-file <p>  Read JSON request body for direct endpoint mode from a file
 --origin <url>   Origin to use for browser-style CORS preflight
 --limit <n>      Maximum endpoints to probe, default 6
 --json           Print JSON instead of Markdown

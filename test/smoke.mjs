@@ -104,6 +104,35 @@ const server = createServer((request, response) => {
             },
           },
         },
+        '/chat': {
+          post: {
+            operationId: 'createChatWithSchema',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['model', 'messages'],
+                    properties: {
+                      model: { type: 'string', enum: ['fixture-model'] },
+                      messages: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          required: ['role', 'content'],
+                          properties: {
+                            role: { type: 'string', enum: ['user'] },
+                            content: { type: 'string', minLength: 1 },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     }))
     return
@@ -389,6 +418,39 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/body-required') {
+    let body = ''
+    request.on('data', chunk => {
+      body += chunk
+    })
+    request.on('end', () => {
+      const parsed = body ? JSON.parse(body) : {}
+      if (parsed.prompt !== 'price CPI') {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ error: 'missing body prompt' }))
+        return
+      }
+      response.statusCode = 402
+      response.setHeader('content-type', 'application/json')
+      response.setHeader('access-control-allow-origin', '*')
+      response.end(JSON.stringify({
+        x402Version: 1,
+        error: 'Payment required',
+        accepts: [{
+          scheme: 'exact',
+          network: 'solana',
+          maxAmountRequired: '7000',
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+          resource: `${serverUrl}/body-required`,
+          maxTimeoutSeconds: 60,
+        }],
+      }))
+    })
+    return
+  }
+
   if (request.url === '/ref-paid') {
     let body = ''
     request.on('data', chunk => {
@@ -482,6 +544,39 @@ const server = createServer((request, response) => {
           asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
           payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
           resource: `${serverUrl}/orders`,
+          maxTimeoutSeconds: 60,
+        }],
+      }))
+    })
+    return
+  }
+
+  if (request.url === '/chat') {
+    let body = ''
+    request.on('data', chunk => {
+      body += chunk
+    })
+    request.on('end', () => {
+      const parsed = body ? JSON.parse(body) : {}
+      if (parsed.model !== 'fixture-model' || parsed.messages?.[0]?.content !== 'example') {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ error: 'missing nested chat body' }))
+        return
+      }
+      response.statusCode = 402
+      response.setHeader('content-type', 'application/json')
+      response.setHeader('access-control-allow-origin', '*')
+      response.end(JSON.stringify({
+        x402Version: 1,
+        error: 'Payment required',
+        accepts: [{
+          scheme: 'exact',
+          network: 'solana',
+          maxAmountRequired: '9000',
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          payTo: '2Ynf2xxaiLbPy9p8iWE5ZiUd1wojJ45pRwCEN3mgK8aE',
+          resource: `${serverUrl}/chat`,
           maxTimeoutSeconds: 60,
         }],
       }))
@@ -656,9 +751,12 @@ try {
 
   assert.match(examples.stdout, /listBrandsWithExample/)
   assert.match(examples.stdout, /createOrderWithExample/)
+  assert.match(examples.stdout, /createChatWithSchema/)
   assert.match(examples.stdout, /\$0\.025/)
+  assert.match(examples.stdout, /\$0\.009/)
   assert.doesNotMatch(examples.stdout, /listBrandsWithExample returned validation HTTP 400/)
   assert.doesNotMatch(examples.stdout, /createOrderWithExample returned validation HTTP 400/)
+  assert.doesNotMatch(examples.stdout, /createChatWithSchema returned validation HTTP 400/)
 
   const gatewayBasePath = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
@@ -837,6 +935,20 @@ try {
   assert.doesNotMatch(needsParam.stdout, /does not repeat the resource URL/)
   assert.doesNotMatch(needsParam.stdout, /\$0\.000/)
   assert.doesNotMatch(needsParam.stdout, /\| needs-param \| GET \| 400 \| x402 \|/)
+
+  const bodyRequired = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    '--endpoint',
+    '--method',
+    'POST',
+    '--body',
+    '{"prompt":"price CPI"}',
+    `${serverUrl}/body-required`,
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(bodyRequired.stdout, /body-required/)
+  assert.match(bodyRequired.stdout, /\$0\.007/)
+  assert.doesNotMatch(bodyRequired.stdout, /validation HTTP 400/)
 
   const freeTrial = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

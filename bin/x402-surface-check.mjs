@@ -18,6 +18,8 @@ Usage:
 Options:
   --endpoint       Treat the URL as one paid endpoint instead of a discovery document
   --method <verb>  HTTP method for direct endpoint mode, default POST
+  --body <json>    JSON request body for direct endpoint mode
+  --body-file <p>  Read JSON request body for direct endpoint mode from a file
   --origin <url>   Origin to use for browser-style CORS preflight
   --limit <n>      Maximum endpoints to probe, default ${defaultLimit}
   --json           Print JSON instead of Markdown
@@ -33,6 +35,8 @@ function parseArgs(argv) {
     limit: Number(process.env.X402_CHECK_LIMIT ?? defaultLimit),
     method: 'POST',
     origin: process.env.X402_CHECK_ORIGIN,
+    body: process.env.X402_CHECK_BODY,
+    bodyFile: process.env.X402_CHECK_BODY_FILE,
     outputPath: '',
     url: '',
   }
@@ -55,6 +59,14 @@ function parseArgs(argv) {
       args.method = String(argv[index + 1] ?? '').toUpperCase()
       index += 1
     }
+    else if (arg === '--body') {
+      args.body = argv[index + 1]
+      index += 1
+    }
+    else if (arg === '--body-file') {
+      args.bodyFile = argv[index + 1]
+      index += 1
+    }
     else if (arg === '--origin') {
       args.origin = argv[index + 1]
       index += 1
@@ -75,6 +87,23 @@ function parseArgs(argv) {
   }
 
   return args
+}
+
+async function directEndpointRequestBody(options) {
+  if (!options.endpoint) return undefined
+  if (options.body && options.bodyFile) {
+    throw new Error('Use either --body or --body-file, not both.')
+  }
+  const raw = options.bodyFile
+    ? await readFile(options.bodyFile, 'utf8')
+    : options.body
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw)
+  }
+  catch (error) {
+    throw new Error(`Request body must be valid JSON: ${error.message}`)
+  }
 }
 
 function moneyFromAtomic(amount, decimals = 6) {
@@ -176,9 +205,13 @@ function resolveSchema(schema, document, seen = new Set()) {
   return resolveSchema(resolved, document, seen)
 }
 
-function exampleValue(schemaOrParameter, document) {
+function exampleValue(schemaOrParameter, document, depth = 0) {
   if (!schemaOrParameter || typeof schemaOrParameter !== 'object') return undefined
   const schema = resolveSchema(schemaOrParameter.schema ?? schemaOrParameter, document)
+  const composite = schema.oneOf ?? schema.anyOf ?? schema.allOf
+  if (Array.isArray(composite) && composite.length > 0) {
+    return exampleValue(composite[0], document, depth + 1)
+  }
   const value = schemaOrParameter.example
     ?? schema.const
     ?? schema.example
@@ -195,6 +228,25 @@ function exampleValue(schemaOrParameter, document) {
   if (schema.type === 'integer') return Number.isFinite(Number(schema.minimum)) ? Number(schema.minimum) : 1
   if (schema.type === 'number') return Number.isFinite(Number(schema.minimum)) ? Number(schema.minimum) : 1
   if (schema.type === 'boolean') return false
+  if (schema.type === 'array') {
+    if (depth > 4) return []
+    const item = exampleValue(schema.items ?? {}, document, depth + 1)
+    return item === undefined ? [] : [item]
+  }
+  if (schema.type === 'object') {
+    if (depth > 4) return {}
+    const properties = schema.properties && typeof schema.properties === 'object'
+      ? schema.properties
+      : {}
+    const required = new Set(Array.isArray(schema.required) ? schema.required : Object.keys(properties))
+    const result = {}
+    for (const [key, property] of Object.entries(properties)) {
+      if (!required.has(key)) continue
+      const nestedValue = exampleValue(property, document, depth + 1)
+      if (nestedValue !== undefined) result[key] = nestedValue
+    }
+    return result
+  }
   return undefined
 }
 
@@ -812,6 +864,7 @@ function formatMarkdown(report) {
 }
 
 async function runCheck(options) {
+  const directRequestBody = await directEndpointRequestBody(options)
   let sourceDocument = null
   let document = options.endpoint
     ? {
@@ -823,7 +876,7 @@ async function runCheck(options) {
       }
     : await fetchDocument(options.url)
   let entries = options.endpoint
-    ? [{ name: new URL(options.url).pathname.split('/').filter(Boolean).at(-1) ?? options.url, url: options.url, method: options.method || 'POST' }]
+    ? [{ name: new URL(options.url).pathname.split('/').filter(Boolean).at(-1) ?? options.url, url: options.url, method: options.method || 'POST', requestBody: directRequestBody }]
     : (document.body.json ? endpointEntries(document.body.json, document.url, options.limit) : [])
 
   if (!options.endpoint && entries.length === 0 && document.body.json) {
