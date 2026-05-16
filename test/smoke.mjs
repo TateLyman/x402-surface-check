@@ -333,6 +333,20 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/tool-name-array.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      name: 'MCP Tool Name Fixture',
+      endpoint: '/mcp',
+      tools: [
+        'get_manifest',
+        'get_quote',
+        'settle',
+      ],
+    }))
+    return
+  }
+
   if (request.url === '/resources.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -1190,6 +1204,17 @@ try {
   assert.match(stringEndpoints.stdout, /\$0\.02/)
   assert.match(stringEndpoints.stdout, /\$0\.04/)
   assert.match(stringEndpoints.stdout, /\$0\.08/)
+
+  const toolNameArray = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/tool-name-array.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(toolNameArray.stdout, /Probed endpoints: 0/)
+  assert.doesNotMatch(toolNameArray.stdout, /\| 0 \|/)
+  assert.match(toolNameArray.stdout, /Document does not expose any manifest, OpenAPI, item, category, or resource endpoints/)
 
   const linkedOpenApi = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

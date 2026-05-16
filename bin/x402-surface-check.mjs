@@ -419,8 +419,26 @@ function endpointEntries(document, sourceUrl, limit) {
   if (!Array.isArray(document.endpoints) && document.endpoints && typeof document.endpoints === 'object') {
     endpointMaps.push(document.endpoints)
   }
-  if (document.tools && typeof document.tools === 'object') {
+  if (document.tools && typeof document.tools === 'object' && !Array.isArray(document.tools)) {
     endpointMaps.push(document.tools)
+  }
+  if (Array.isArray(document.tools)) {
+    for (const tool of document.tools) {
+      if (!tool || typeof tool !== 'object') continue
+      const rawPath = tool.url ?? tool.endpoint ?? tool.path
+      if (!rawPath) continue
+      const method = String(tool.method ?? 'POST').toUpperCase()
+      const paymentSignal = manifestEndpointPaymentSignal(tool)
+      const hasPathParameters = /\{[^}]+\}/.test(String(rawPath))
+      if (paymentSignal === 0 && (method !== 'GET' || hasPathParameters)) continue
+      entries.push({
+        name: tool.id ?? tool.name ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
+        url: manifestEndpointUrl(rawPath, tool, baseUrl, sourceUrl),
+        method,
+        requestBody: manifestEndpointBody(tool, document),
+        publicDiscovery: paymentSignal === 0,
+      })
+    }
   }
   for (const endpointMap of endpointMaps) {
     for (const [key, endpoint] of Object.entries(endpointMap)) {
