@@ -699,6 +699,37 @@ function acceptDecimals(accept) {
   return Number.isFinite(numeric) ? numeric : 6
 }
 
+function acceptResourceValue(accept) {
+  return accept.resource
+    ?? accept.extra?.resource
+    ?? accept.resourceUrl
+    ?? accept.extra?.resourceUrl
+    ?? ''
+}
+
+function challengeResourceValue(challenge) {
+  return challenge?.resource?.url
+    ?? challenge?.resourceUrl
+    ?? ''
+}
+
+function hasFreshnessMetadata(challenge, accept) {
+  return [
+    challenge?.expires,
+    challenge?.expiresAt,
+    challenge?.validBefore,
+    challenge?.maxTimeoutSeconds,
+    accept?.maxTimeoutSeconds,
+    accept?.maxTimeout,
+    accept?.timeout,
+    accept?.expires,
+    accept?.expiresAt,
+    accept?.validBefore,
+    accept?.extra?.expires,
+    accept?.extra?.validBefore,
+  ].some(value => value !== undefined && value !== null && value !== '')
+}
+
 function usesDecimalAmount(accept, result) {
   const rawAmount = acceptAmountValue(accept)
   if (rawAmount === undefined || rawAmount === null || rawAmount === '') return false
@@ -734,8 +765,8 @@ function challengeSummary(result) {
   const firstAccept = challengeAccepts(result)[0] ?? {}
   const hasChallenge = hasPaymentChallenge(result)
   const amount = acceptAmountValue(firstAccept)
-  const resourceUrl = challenge?.resource?.url ?? firstAccept.resource ?? ''
-  const extraResource = firstAccept.extra?.resource ?? firstAccept.resource ?? ''
+  const resourceUrl = challengeResourceValue(challenge) || acceptResourceValue(firstAccept)
+  const extraResource = acceptResourceValue(firstAccept)
 
   return {
     status: result.status,
@@ -763,6 +794,21 @@ function looksLikePlaceholderPayTo(payTo) {
   if (/^0x0{36,}0?1?$/i.test(value)) return true
   if (/^1{24,}$/.test(value)) return true
   return false
+}
+
+function looksLikeLocalResourceUrl(value) {
+  if (!/^https?:\/\//i.test(String(value ?? ''))) return false
+  try {
+    const host = new URL(value).hostname.toLowerCase()
+    return host === 'localhost'
+      || host === '0.0.0.0'
+      || host === '127.0.0.1'
+      || host === '::1'
+      || host.endsWith('.local')
+  }
+  catch {
+    return false
+  }
 }
 
 function cachePolicy(headers = {}) {
@@ -864,6 +910,9 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     if (summary.resourceUrl.startsWith('http://') || summary.extraResource.startsWith('http://')) {
       findings.push(`P1 - ${result.name} challenge uses a non-HTTPS resource URL: ${summary.resourceUrl || summary.extraResource}.`)
     }
+    if (looksLikeLocalResourceUrl(summary.resourceUrl) || looksLikeLocalResourceUrl(summary.extraResource)) {
+      findings.push(`P1 - ${result.name} challenge binds payment to a localhost/private-development resource URL: ${summary.resourceUrl || summary.extraResource}.`)
+    }
     if (!summary.amount || !summary.payTo || !summary.asset) {
       findings.push(`P1 - ${result.name} challenge is missing amount/maxAmountRequired, payTo, or asset metadata.`)
     }
@@ -873,7 +922,12 @@ function findingList(documentResult, challengeResults, preflightResults, entries
         findings.push(`P1 - ${result.name} documented price ${moneyFromDecimal(summary.expectedPriceUsd)} does not match live 402 challenge price ${moneyFromDecimal(summary.priceUsd)}.`)
       }
     }
-    for (const accept of challengeAccepts(result)) {
+    const accepts = challengeAccepts(result)
+    const topResource = challengeResourceValue(result.body.json)
+    const acceptResources = accepts.map(acceptResourceValue)
+    const populatedAcceptResources = acceptResources.filter(Boolean)
+
+    for (const accept of accepts) {
       if (looksLikePlaceholderPayTo(accept.payTo)) {
         findings.push(`P1 - ${result.name} challenge advertises placeholder-looking payTo ${accept.payTo}; production listings should not ask agents to pay placeholder recipients.`)
       }
@@ -881,11 +935,20 @@ function findingList(documentResult, challengeResults, preflightResults, entries
         findings.push(`P2 - ${result.name} challenge advertises staging/test network ${accept.network}; document this as demo-only until live-value payment rails are active.`)
       }
     }
-    if (!summary.resourceUrl || !summary.extraResource) {
-      findings.push(`P2 - ${result.name} challenge does not repeat the resource URL in both resource.url and accepts[0].extra.resource/resource.`)
+    if (!topResource && populatedAcceptResources.length === 0) {
+      findings.push(`P2 - ${result.name} challenge does not expose a signed/intended resource URL at the top level or in any accept leg.`)
+    }
+    else if (accepts.length > 0 && populatedAcceptResources.length < accepts.length) {
+      findings.push(`P2 - ${result.name} challenge does not repeat the resource URL in every accept leg for spend-map and replay binding.`)
+    }
+    if (topResource && populatedAcceptResources.some(resource => resource !== topResource)) {
+      findings.push(`P2 - ${result.name} challenge resource URL differs between resource.url and one or more accept legs; agents may bind the payment to inconsistent resources.`)
+    }
+    if (accepts.length > 0 && !accepts.some(accept => hasFreshnessMetadata(result.body.json, accept))) {
+      findings.push(`P2 - ${result.name} challenge does not expose timeout/expiry metadata; bounded freshness helps reduce replay windows for payment capabilities.`)
     }
     if (looksExplicitlyCacheable(result.headers)) {
-      findings.push(`P2 - ${result.name} payment challenge response is explicitly cacheable (${cachePolicy(result.headers)}); paid routes should use no-store/private cache policy or bypass shared caches.`)
+      findings.push(`P1 - ${result.name} payment challenge response is explicitly cacheable (${cachePolicy(result.headers)}); paid routes should use no-store/private cache policy or bypass shared caches.`)
     }
     else if (options.strictCache && !cachePolicy(result.headers)) {
       findings.push(`P3 - ${result.name} payment challenge response did not expose Cache-Control; for payment-gated routes, document or send no-store/private cache policy and confirm paid 200 responses are never shared-cacheable.`)
@@ -933,8 +996,8 @@ function groupedFindingLabel(finding) {
   if (/CORS preflight does not allow X-PAYMENT/.test(finding)) {
     return 'P1 - CORS preflight does not allow X-PAYMENT.'
   }
-  if (/challenge does not repeat the resource URL/.test(finding)) {
-    return 'P2 - Challenge accept legs do not repeat the resource URL for reconciliation.'
+  if (/challenge does not expose a signed\/intended resource URL|challenge does not repeat the resource URL|challenge resource URL differs/.test(finding)) {
+    return 'P2 - Challenges have incomplete or inconsistent resource binding.'
   }
   if (/returned validation HTTP \d+ before a payment challenge/.test(finding)) {
     return 'P1 - Routes return validation before a payment challenge.'
@@ -948,8 +1011,14 @@ function groupedFindingLabel(finding) {
   if (/challenge advertises placeholder-looking payTo/.test(finding)) {
     return 'P1 - Challenges advertise placeholder-looking payTo recipients.'
   }
+  if (/challenge does not expose timeout\/expiry metadata/.test(finding)) {
+    return 'P2 - Challenges do not expose timeout or expiry metadata for replay-window control.'
+  }
   if (/payment challenge response did not expose Cache-Control/.test(finding)) {
     return 'P3 - Payment challenge responses do not expose Cache-Control in strict cache mode.'
+  }
+  if (/payment challenge response is explicitly cacheable/.test(finding)) {
+    return 'P1 - Payment challenge responses are explicitly cacheable.'
   }
   if (/content while payment headers advertise enforcement/.test(finding)) {
     return 'P2 - Payment headers advertise enforcement on a 200 response.'
@@ -982,11 +1051,13 @@ function referenceGuides(findings) {
     add('Cloudflare x402 Worker Starter', 'https://tateprograms.com/cloudflare-x402-worker.html')
     add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
   }
-  if (/validation HTTP \d+ before a payment challenge|auth HTTP \d+ before a payment challenge|replay|idempotency/i.test(text)) {
+  if (/validation HTTP \d+ before a payment challenge|auth HTTP \d+ before a payment challenge|replay|idempotency|timeout\/expiry|freshness/i.test(text)) {
     add('x402 Launch Checklist', 'https://tateprograms.com/x402-launch-checklist.html')
+    add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
   }
-  if (/resource URL|resource echo|accepts\[0\]\.extra\.resource/i.test(text)) {
+  if (/resource URL|resource echo|resource binding|accept leg|accepts\[0\]\.extra\.resource/i.test(text)) {
     add('x402 Surface Check notes', 'https://tateprograms.com/x402-surface-check.html')
+    add('x402 Attack Map 2026', 'https://tateprograms.com/x402-attack-map-2026.html')
   }
   return guides.map(guide => `- ${guide.label}: ${guide.url}`)
 }

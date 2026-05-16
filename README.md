@@ -32,8 +32,10 @@ npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 - Placeholder recipients such as zero addresses and Solana system-program values
 - Testnet or staging rails such as Base Sepolia and Solana devnet
 - HTTPS resource URLs and stable resource metadata
+- Resource binding across top-level `resource.url` and every accept leg, including localhost/private-development resource URLs that should not ship in production
+- Timeout/expiry metadata on challenges, so payment capabilities have an explicit bounded freshness window
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
-- Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
+- Cache-Control posture on no-payment challenge responses, with P1 warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
 - Payment-enforcement headers on `200` responses, so public telemetry/free-trial endpoints do not accidentally advertise enforced x402 while returning content before a challenge
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
 - Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and the May 2026 x402 attack-control map
