@@ -5,6 +5,7 @@ No-payment CLI for checking x402 launch surfaces before a real agent spends.
 It accepts an x402 manifest or OpenAPI URL, derives public endpoints, sends no-payment probes, checks browser preflight behavior, and returns a Markdown patch queue. It never sends `X-PAYMENT`, never signs, and never attempts a paid call.
 
 npm: https://www.npmjs.com/package/x402-surface-check
+Attack-map field note: https://tateprograms.com/x402-attack-map-2026.html
 
 ```bash
 npx --yes x402-surface-check https://api.example.com/.well-known/x402
@@ -33,7 +34,7 @@ npx --yes x402-surface-check --strict-cache https://api.example.com/openapi.json
 - Browser CORS allowance for the requesting origin and `X-PAYMENT`, including the actual 402 challenge response
 - Cache-Control posture on no-payment challenge responses, with warnings for explicitly cacheable payment gates and optional strict-cache findings for missing policy headers
 - Grouped finding summaries for repeated route-wide issues, so large manifests keep the patch order readable
-- Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and launch controls
+- Contextual reference guides for CORS, cache policy, Worker gates, resource echo, validation/auth ordering, and the May 2026 x402 attack-control map
 - Over-broad public method surfaces
 - Auth, validation, and free/trial responses that appear before a payment challenge, without piling on missing-field findings when no challenge was actually returned
 - Operational health/status endpoints, without treating expected free health checks as paid-route failures
@@ -49,7 +50,7 @@ Recent public no-payment checks have found and verified real launch fixes:
 - UZPROOF: schemes-style Solana x402 challenge and browser payment-header behavior verified clean. https://github.com/solana-foundation/pay-skills/pull/28#issuecomment-4455613892
 - HYRE Agent: OpenAPI-declared prices found 10x below live 402 challenge prices. https://github.com/solana-foundation/pay-skills/pull/19#issuecomment-4455641258
 - anchor-x402: multi-rail x402 challenges verified, with browser preflight blockers isolated before merge. https://github.com/solana-foundation/pay-skills/pull/47#issuecomment-4455678163
-- Agent Trust Bench: linked discovery URL and browser-compatibility notes verified clean for adversarial agent-payment resources. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4455722170
+- Agent Trust Bench: three no-payment passes converged on zero findings after discovery, browser preflight, cache, and resource-echo fixes. https://github.com/solana-foundation/pay-skills/pull/23#issuecomment-4467597309
 - Solrouter: private LLM inference route verified with HTTPS resource-binding and price-alignment notes. https://github.com/solana-foundation/pay-skills/pull/39#issuecomment-4455800060
 - Tetrac: Solana market-data payment gates verified, with browser payment-header preflight blocker isolated. https://github.com/solana-foundation/pay-skills/pull/32#issuecomment-4455923744
 

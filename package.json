@@ -1,6 +1,6 @@
 {
   "name": "x402-surface-check",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "description": "No-payment x402 public-surface checker for manifests, OpenAPI specs, and HTTP 402 challenges.",
   "type": "module",
   "bin": {
