@@ -6,7 +6,7 @@ import { strict as assert } from 'node:assert'
 const execFileAsync = promisify(execFile)
 
 const server = createServer((request, response) => {
-  if (request.method === 'OPTIONS' && request.url === '/no-origin') {
+  if (request.method === 'OPTIONS' && (request.url === '/no-origin' || request.url === '/no-origin-2')) {
     response.statusCode = 204
     response.setHeader('access-control-allow-headers', 'content-type,x-payment')
     response.setHeader('access-control-allow-methods', 'GET, OPTIONS')
@@ -262,6 +262,23 @@ const server = createServer((request, response) => {
         type: 'http',
         method: 'GET',
         metadata: { name: 'Premium routing recommendations' },
+      }],
+    }))
+    return
+  }
+
+  if (request.url === '/no-origin-list.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      endpoints: [{
+        path: '/no-origin',
+        method: 'GET',
+        description: 'No CORS fixture one',
+      }, {
+        path: '/no-origin-2',
+        method: 'GET',
+        description: 'No CORS fixture two',
       }],
     }))
     return
@@ -642,6 +659,24 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/no-origin-2') {
+    response.statusCode = 402
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      x402Version: 2,
+      error: 'Payment required',
+      resource: { url: `${serverUrl}/no-origin-2` },
+      accepts: [{
+        scheme: 'exact',
+        network: 'eip155:8453',
+        amount: '20000',
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+      }],
+    }))
+    return
+  }
+
   if (request.url === '/legacy/v1') {
     response.statusCode = 402
     response.setHeader('content-type', 'application/json')
@@ -921,6 +956,17 @@ try {
 
   assert.match(noOrigin.stdout, /CORS preflight does not allow the requesting origin/)
   assert.match(noOrigin.stdout, /402 challenge response does not allow the requesting origin/)
+
+  const groupedNoOrigin = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/no-origin-list.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(groupedNoOrigin.stdout, /## Finding Summary/)
+  assert.match(groupedNoOrigin.stdout, /2 endpoints: P1 - Actual 402 challenge responses do not allow the requesting origin/)
+  assert.match(groupedNoOrigin.stdout, /2 endpoints: P1 - CORS preflight does not allow the requesting origin/)
 
   const needsParam = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',

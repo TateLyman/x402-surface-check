@@ -814,6 +814,45 @@ function findingList(documentResult, challengeResults, preflightResults, entries
   return findings
 }
 
+function groupedFindingLabel(finding) {
+  if (/402 challenge response does not allow the requesting origin/.test(finding)) {
+    return 'P1 - Actual 402 challenge responses do not allow the requesting origin; browser clients cannot read payment requirements.'
+  }
+  if (/CORS preflight does not allow the requesting origin/.test(finding)) {
+    return 'P1 - CORS preflight does not allow the requesting origin.'
+  }
+  if (/CORS preflight does not allow X-PAYMENT/.test(finding)) {
+    return 'P1 - CORS preflight does not allow X-PAYMENT.'
+  }
+  if (/challenge does not repeat the resource URL/.test(finding)) {
+    return 'P2 - Challenge accept legs do not repeat the resource URL for reconciliation.'
+  }
+  if (/returned validation HTTP \d+ before a payment challenge/.test(finding)) {
+    return 'P1 - Routes return validation before a payment challenge.'
+  }
+  if (/returned auth HTTP \d+ before a payment challenge/.test(finding)) {
+    return 'P2 - Routes return auth before a payment challenge.'
+  }
+  if (/challenge advertises staging\/test network/.test(finding)) {
+    return 'P2 - Challenges advertise staging or test networks.'
+  }
+  if (/challenge advertises placeholder-looking payTo/.test(finding)) {
+    return 'P1 - Challenges advertise placeholder-looking payTo recipients.'
+  }
+  return null
+}
+
+function groupedFindingSummary(findings) {
+  const counts = new Map()
+  for (const finding of findings) {
+    const label = groupedFindingLabel(finding)
+    if (label) counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([label, count]) => `- ${count} endpoints: ${label}`)
+}
+
 function formatMarkdown(report) {
   const document = report.document.body.json ?? {}
   const challengeRows = report.challenges.map(result => {
@@ -823,6 +862,7 @@ function formatMarkdown(report) {
   const preflightRows = report.preflights.map(result => {
     return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${result.headers['access-control-allow-origin'] ?? '-'} | ${result.headers['access-control-allow-headers'] ?? '-'} | ${result.headers['access-control-allow-methods'] ?? '-'} |`
   })
+  const findingSummary = groupedFindingSummary(report.findings)
 
   return [
     '# x402 Public Surface Check',
@@ -856,6 +896,12 @@ function formatMarkdown(report) {
     '| --- | --- | --- | --- | --- | --- |',
     ...(preflightRows.length ? preflightRows : ['| - | - | - | - | - | - |']),
     '',
+    ...(findingSummary.length ? [
+      '## Finding Summary',
+      '',
+      ...findingSummary,
+      '',
+    ] : []),
     '## Findings',
     '',
     ...(report.findings.length ? report.findings.map(item => `- ${item}`) : ['- No obvious launch-readiness findings from the public no-payment probes.']),
