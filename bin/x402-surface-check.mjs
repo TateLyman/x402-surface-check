@@ -322,6 +322,47 @@ function openApiProbeUrl(path, operation, baseUrl, document) {
   return url.toString()
 }
 
+function manifestEndpointPaymentSignal(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return 0
+  if (Number(endpoint.phase1_response?.status) === 402) return 2
+  if (/payment-required|x-payment|402/i.test(String(endpoint.phase1_response?.header ?? ''))) return 2
+  if (/payment|required|402/i.test(String(endpoint.description ?? ''))) return 1
+  if (endpoint.accepts || endpoint.schemes || endpoint.payment || endpoint['x-payment-info']) return 1
+  return 0
+}
+
+function manifestEndpointBody(endpoint, document) {
+  const body = endpoint?.request_body ?? endpoint?.requestBody
+  if (!body || typeof body !== 'object') return undefined
+  if (body.example !== undefined) return body.example
+  if (body.safe_example !== undefined) return body.safe_example
+  if (body.safeExample !== undefined) return body.safeExample
+  return exampleValue(body, document)
+}
+
+function manifestEndpointUrl(rawPath, endpoint, baseUrl, sourceUrl) {
+  const url = new URL(endpointUrl(rawPath, baseUrl, sourceUrl))
+  const parameters = endpoint?.parameters
+  if (!parameters || typeof parameters !== 'object') return url.toString()
+
+  for (const [name, parameter] of Object.entries(parameters)) {
+    if (url.pathname.includes(`{${name}}`)) {
+      const pathValue = parameter?.example ?? parameter?.default
+      if (pathValue !== undefined && pathValue !== '') {
+        url.pathname = url.pathname.replaceAll(`{${name}}`, encodeURIComponent(String(pathValue)))
+      }
+      continue
+    }
+
+    const value = parameter?.example ?? parameter?.default
+    if (value !== undefined && value !== '') {
+      url.searchParams.set(name, String(value))
+    }
+  }
+
+  return url.toString()
+}
+
 function endpointEntries(document, sourceUrl, limit) {
   const entries = []
   const baseUrl = documentBaseUrl(document, sourceUrl)
@@ -353,6 +394,24 @@ function endpointEntries(document, sourceUrl, limit) {
         name: endpoint.id ?? endpoint.name ?? String(rawPath).split('/').filter(Boolean).at(-1) ?? String(rawPath),
         url: endpointUrl(rawPath, baseUrl, sourceUrl),
         method: String(endpoint.method ?? 'POST').toUpperCase(),
+      })
+    }
+  }
+  else if (document.endpoints && typeof document.endpoints === 'object') {
+    for (const [key, endpoint] of Object.entries(document.endpoints)) {
+      if (!endpoint || typeof endpoint !== 'object') continue
+      const rawPath = endpoint.url ?? endpoint.endpoint ?? endpoint.path
+      if (!rawPath) continue
+      const method = String(endpoint.method ?? 'POST').toUpperCase()
+      const paymentSignal = manifestEndpointPaymentSignal(endpoint)
+      const hasPathParameters = /\{[^}]+\}/.test(String(rawPath))
+      if (paymentSignal === 0 && (method !== 'GET' || hasPathParameters)) continue
+      entries.push({
+        name: endpoint.id ?? endpoint.name ?? key,
+        url: manifestEndpointUrl(rawPath, endpoint, baseUrl, sourceUrl),
+        method,
+        requestBody: manifestEndpointBody(endpoint, document),
+        publicDiscovery: paymentSignal === 0,
       })
     }
   }
@@ -767,6 +826,13 @@ function findingList(documentResult, challengeResults, preflightResults, entries
     const summary = challengeSummary(result)
     if (summary.network) challengeNetworks.add(summary.network)
     const hasChallenge = hasPaymentChallenge(result)
+
+    if (result.publicDiscovery && !hasChallenge) {
+      if (result.status < 200 || result.status >= 300) {
+        findings.push(`P2 - ${result.name} is documented as a public discovery route but returned HTTP ${result.status}; check the manifest example parameters or route availability.`)
+      }
+      continue
+    }
 
     if (result.status !== 402) {
       if (result.status >= 200 && result.status < 300) {

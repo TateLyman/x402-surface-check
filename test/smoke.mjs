@@ -323,6 +323,58 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/object-endpoints.json') {
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({
+      version: '1.0',
+      service: {
+        name: 'Object Endpoint Fixture',
+        url: serverUrl,
+      },
+      networks: [{ id: 'base', network: 'eip155:8453' }],
+      endpoints: {
+        brandsObject: {
+          method: 'GET',
+          path: '/object/brands',
+          description: 'Discover public brands before checkout.',
+          parameters: {
+            country_code: { type: 'string', required: true, example: 'us' },
+          },
+        },
+        catalogObject: {
+          method: 'GET',
+          path: '/object/catalog',
+          description: 'Get public catalog products before checkout.',
+          parameters: {
+            country_code: { type: 'string', required: true, example: 'us' },
+            brand_name: { type: 'string', required: false, example: 'Example Store' },
+          },
+        },
+        createOrderObject: {
+          method: 'POST',
+          path: '/object/order',
+          description: 'Two-phase endpoint. First call returns 402 PAYMENT-REQUIRED.',
+          request_body: {
+            example: {
+              email: 'agent@example.com',
+              items: [{ product_id: 'sku_123', beneficiary_account: 'recipient@example.com' }],
+            },
+          },
+          phase1_response: {
+            status: 402,
+            header: 'PAYMENT-REQUIRED',
+          },
+        },
+        getOrderObject: {
+          method: 'GET',
+          path: '/object/orders/{order_id}',
+          description: 'Poll after a paid order exists.',
+        },
+      },
+    }))
+    return
+  }
+
   if (request.url === '/openapi-link.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -421,6 +473,54 @@ const server = createServer((request, response) => {
         maxTimeoutSeconds: 60,
       }],
     }))
+    return
+  }
+
+  if (request.url === '/object/brands?country_code=us') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify([{ brand_name: 'Example Store' }]))
+    return
+  }
+
+  if (request.url === '/object/catalog?country_code=us&brand_name=Example+Store') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify([{ product_id: 'sku_123', price_usdc: '0.02' }]))
+    return
+  }
+
+  if (request.url === '/object/order') {
+    let body = ''
+    request.on('data', chunk => {
+      body += chunk
+    })
+    request.on('end', () => {
+      const parsed = body ? JSON.parse(body) : {}
+      if (parsed.email !== 'agent@example.com' || parsed.items?.[0]?.product_id !== 'sku_123') {
+        response.statusCode = 400
+        response.setHeader('content-type', 'application/json')
+        response.end(JSON.stringify({ error: 'missing object endpoint body example' }))
+        return
+      }
+      response.statusCode = 402
+      response.setHeader('content-type', 'application/json')
+      response.setHeader('access-control-allow-origin', '*')
+      response.end(JSON.stringify({
+        x402Version: 2,
+        error: 'Payment required',
+        resource: { url: `${serverUrl}/object/order` },
+        accepts: [{
+          scheme: 'exact',
+          network: 'eip155:8453',
+          amount: '20000',
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+          payTo: '0x549c82e6bfc54bdae9a2073744cbc2af5d1fc6d1',
+          resource: `${serverUrl}/object/order`,
+          extra: { resource: `${serverUrl}/object/order` },
+        }],
+      }))
+    })
     return
   }
 
@@ -932,6 +1032,24 @@ try {
   assert.match(resourceManifest.stdout, /\$0\.03/)
   assert.match(resourceManifest.stdout, /eip155:8453/)
   assert.doesNotMatch(resourceManifest.stdout, /Document does not expose/)
+
+  const objectEndpoints = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/object-endpoints.json`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(objectEndpoints.stdout, /brandsObject/)
+  assert.match(objectEndpoints.stdout, /catalogObject/)
+  assert.match(objectEndpoints.stdout, /createOrderObject/)
+  assert.match(objectEndpoints.stdout, /Probed endpoints: 3/)
+  assert.match(objectEndpoints.stdout, /\$0\.02/)
+  assert.doesNotMatch(objectEndpoints.stdout, /getOrderObject/)
+  assert.doesNotMatch(objectEndpoints.stdout, /Document does not expose/)
+  assert.doesNotMatch(objectEndpoints.stdout, /brandsObject returned 200 without a payment challenge/)
+  assert.doesNotMatch(objectEndpoints.stdout, /catalogObject returned 200 without a payment challenge/)
+  assert.doesNotMatch(objectEndpoints.stdout, /createOrderObject returned validation HTTP 400/)
 
   const linkedDiscovery = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
