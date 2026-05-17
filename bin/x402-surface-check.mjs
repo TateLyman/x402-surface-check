@@ -665,6 +665,68 @@ async function fetchDocument(url) {
   }
 }
 
+function parseMcpJsonRpcPayload(body) {
+  if (body?.json?.result?.tools && Array.isArray(body.json.result.tools)) return body.json
+
+  const events = String(body?.text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.match(/^data:\s*(.+)$/)?.[1])
+    .filter(Boolean)
+
+  for (const event of events) {
+    try {
+      const payload = JSON.parse(event)
+      if (payload?.result?.tools && Array.isArray(payload.result.tools)) return payload
+    }
+    catch {
+      // Ignore non-JSON SSE data lines.
+    }
+  }
+
+  return null
+}
+
+function isLikelyMcpHttpEndpoint(document) {
+  const pathname = new URL(document.url).pathname.toLowerCase()
+  if (pathname.endsWith('/mcp') || pathname === '/mcp') return true
+  const text = `${document.body?.text ?? ''} ${document.headers?.allow ?? ''}`
+  return /jsonrpc|mcp|tools\/list|sse not supported|use post|text\/event-stream/i.test(text)
+}
+
+async function probeMcpToolCatalog(url, origin) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'user-agent': `x402-surface-check/${packageJson.version}`,
+      accept: 'application/json, text/event-stream',
+      'content-type': 'application/json',
+      ...(origin ? { origin } : {}),
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: {},
+    }),
+  })
+  const body = await readText(response)
+  const payload = parseMcpJsonRpcPayload(body)
+  const tools = Array.isArray(payload?.result?.tools)
+    ? payload.result.tools.map(tool => ({
+        name: String(tool?.name ?? '').trim(),
+        description: String(tool?.description ?? '').replace(/\s+/g, ' ').trim(),
+      })).filter(tool => tool.name)
+    : []
+
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body,
+    tools,
+    url: response.url,
+  }
+}
+
 async function probeEndpoint(entry, origin) {
   const method = entry.method ?? 'POST'
   const response = await fetch(entry.url, {
@@ -997,23 +1059,27 @@ function isMutatingMethod(method) {
 function findingList(documentResult, challengeResults, preflightResults, entries, options = {}) {
   const document = documentResult.body.json ?? {}
   const findings = []
+  const mcpToolCount = options.mcpCatalog?.tools?.length ?? 0
   const networks = valueList(document.networks)
   const challengeNetworks = new Set()
   const challengesByEntry = new Map(challengeResults.map(result => [entryKey(result), result]))
 
-  if (documentResult.status < 200 || documentResult.status >= 300) {
+  if ((documentResult.status < 200 || documentResult.status >= 300) && mcpToolCount === 0) {
     findings.push(`P1 - Document returned HTTP ${documentResult.status}; expected a successful JSON response.`)
   }
 
-  if (!documentResult.body.json) {
+  if (!documentResult.body.json && mcpToolCount === 0) {
     findings.push(`P1 - Document did not return parseable JSON; content begins: ${documentResult.body.text.slice(0, 80).replace(/\s+/g, ' ')}.`)
   }
   else {
     findings.push(...publicUrlCredentialFindings(document))
   }
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && mcpToolCount === 0) {
     findings.push('P1 - Document does not expose any manifest, OpenAPI, item, category, or resource endpoints for no-payment probes.')
+  }
+  else if (entries.length === 0 && mcpToolCount > 0) {
+    findings.push(`P3 - Streamable HTTP MCP catalog exposes ${mcpToolCount} tools, but no static x402 endpoint examples were available for no-payment challenge probes.`)
   }
 
   for (const result of challengeResults) {
@@ -1236,6 +1302,9 @@ function referenceGuides(findings) {
 
 function formatMarkdown(report) {
   const document = report.document.body.json ?? {}
+  const documentType = report.directEndpoint
+    ? 'direct endpoint'
+    : (report.mcpCatalog?.tools?.length ? 'Streamable HTTP MCP endpoint' : (document.openapi ? 'OpenAPI' : 'x402 manifest or JSON document'))
   const challengeRows = report.challenges.map(result => {
     const summary = challengeSummary(result)
     return `| ${result.name} | ${result.method ?? 'POST'} | ${result.status} | ${summary.protocol || '-'} | ${summary.price || '-'} | ${summary.network || '-'} | ${summary.resourceUrl || '-'} |`
@@ -1261,7 +1330,7 @@ function formatMarkdown(report) {
     '## Document',
     '',
     `- Status: ${report.document.status}`,
-    `- Type: ${report.directEndpoint ? 'direct endpoint' : (document.openapi ? 'OpenAPI' : 'x402 manifest or JSON document')}`,
+    `- Type: ${documentType}`,
     `- Agent: ${document.agent?.name ?? '-'}`,
     `- Wallet: ${document.agent?.wallet ?? '-'}`,
     `- Facilitator: ${displayMetadataValue(document.facilitator)}`,
@@ -1269,6 +1338,16 @@ function formatMarkdown(report) {
     `- Capabilities: ${capabilityList(document.capabilities).join(', ') || '-'}`,
     `- Probed endpoints: ${report.entries.length}`,
     '',
+    ...(report.mcpCatalog ? [
+      '## MCP Tool Catalog',
+      '',
+      `- Status: ${report.mcpCatalog.status}`,
+      `- Tools: ${report.mcpCatalog.tools.length}`,
+      ...(report.mcpCatalog.tools.length
+        ? report.mcpCatalog.tools.slice(0, 12).map(tool => `- \`${tool.name}\`${tool.description ? ` - ${tool.description.slice(0, 160)}` : ''}`)
+        : ['- No MCP tools parsed from the public Streamable HTTP response.']),
+      '',
+    ] : []),
     '## No-Payment Challenge Map',
     '',
     '| Endpoint | Method | HTTP | Protocol | Price | Network | Resource URL |',
@@ -1338,6 +1417,9 @@ async function runCheck(options) {
   }
 
   const origin = options.origin ?? new URL(document.url).origin
+  const mcpCatalog = !options.endpoint && entries.length === 0 && isLikelyMcpHttpEndpoint(document)
+    ? await probeMcpToolCatalog(document.url, origin)
+    : null
   const challenges = []
   const preflights = []
 
@@ -1354,10 +1436,12 @@ async function runCheck(options) {
     findings: [],
     origin,
     challenges,
+    mcpCatalog,
     preflights,
     sourceDocument,
   }
   report.findings = findingList(document, challenges, preflights, entries, {
+    mcpCatalog,
     strictCache: options.strictCache,
     strictProof: options.strictProof,
   })

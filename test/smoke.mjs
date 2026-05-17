@@ -32,6 +32,49 @@ const server = createServer((request, response) => {
     return
   }
 
+  if (request.url === '/streamable-mcp' && request.method === 'GET') {
+    response.statusCode = 405
+    response.setHeader('content-type', 'application/json')
+    response.setHeader('allow', 'POST,GET,HEAD,DELETE')
+    response.end(JSON.stringify({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'SSE not supported in stateless mode. Use POST.',
+      },
+      id: null,
+    }))
+    return
+  }
+
+  if (request.url === '/streamable-mcp' && request.method === 'POST') {
+    response.statusCode = 200
+    response.setHeader('content-type', 'text/event-stream')
+    response.setHeader('cache-control', 'no-cache')
+    response.end(`event: message
+data: ${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        tools: [
+          {
+            name: 'paid_search',
+            description: 'Real-time web search. $0.01 per call.',
+            inputSchema: { type: 'object' },
+          },
+          {
+            name: 'wallet_status',
+            description: 'Check local wallet balance. Free.',
+            inputSchema: { type: 'object' },
+          },
+        ],
+      },
+    })}
+
+`)
+    return
+  }
+
   if (request.url === '/openapi.json') {
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({
@@ -1282,6 +1325,20 @@ try {
   assert.match(toolNameArray.stdout, /Probed endpoints: 0/)
   assert.doesNotMatch(toolNameArray.stdout, /\| 0 \|/)
   assert.match(toolNameArray.stdout, /Document does not expose any manifest, OpenAPI, item, category, or resource endpoints/)
+
+  const streamableMcp = await execFileAsync('node', [
+    'bin/x402-surface-check.mjs',
+    `${serverUrl}/streamable-mcp`,
+    '--origin',
+    'https://example.com',
+  ], { cwd: new URL('..', import.meta.url) })
+
+  assert.match(streamableMcp.stdout, /Streamable HTTP MCP endpoint/)
+  assert.match(streamableMcp.stdout, /MCP Tool Catalog/)
+  assert.match(streamableMcp.stdout, /Tools: 2/)
+  assert.match(streamableMcp.stdout, /`paid_search`/)
+  assert.match(streamableMcp.stdout, /Streamable HTTP MCP catalog exposes 2 tools/)
+  assert.doesNotMatch(streamableMcp.stdout, /Document returned HTTP 405/)
 
   const routeCatalog = await execFileAsync('node', [
     'bin/x402-surface-check.mjs',
